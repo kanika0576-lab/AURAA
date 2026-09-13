@@ -639,6 +639,16 @@ function estimateMin(km) {
   return Math.max(3, Math.round((km / 26) * 60));
 }
 
+// OSRM times are free-flow (no traffic). Indian city congestion adds real delay,
+// so scale to something you'd actually see on a live map.
+function trafficFactor(km) {
+  if (km < 5) return 1.5;
+  if (km < 15) return 1.65;
+  if (km < 40) return 1.8;
+  if (km < 80) return 1.7;
+  return 1.5;
+}
+
 // OSRM polyline (precision 5) decoder
 function decodePolyline(str) {
   const coords = [];
@@ -934,6 +944,7 @@ planBtn.addEventListener('click', async () => {
   let baseMin = null;
   let km = null;
   let geom = null;
+  let usedLive = false;
 
   if (geoData.pickup && geoData.destination) {
     const A = geoData.pickup, B = geoData.destination;
@@ -941,9 +952,11 @@ planBtn.addEventListener('click', async () => {
     try {
       const r = await fetchRoute(A.lat, A.lon, B.lat, B.lon, true);
       if (r) {
-        baseMin = Math.max(4, Math.round(r.duration / 60));
+        const rawMin = Math.max(4, Math.round(r.duration / 60));
+        baseMin = Math.max(rawMin, Math.round(rawMin * trafficFactor(km)));
         km = r.distance / 1000;
         geom = r.geometry || null;
+        usedLive = true;
       }
     } catch { /* fall back to estimate */ }
     if (baseMin === null && km) baseMin = estimateMin(km);
@@ -971,9 +984,11 @@ planBtn.addEventListener('click', async () => {
   loadTrustedPlaces();
 
   buildRouteOptions();
-  routeHint.textContent = baseMin !== null
-    ? `Routing ${pickup} → ${dest} — real route from live data · ${km.toFixed(1)} km, fastest ~${baseMin} min${liveState.weather && liveState.weather.rain ? ' · rain detected, add buffer' : ''}.`
-    : `Routing ${pickup} → ${dest} — live routing unavailable right now, using typical times${liveState.weather && liveState.weather.rain ? ' · rain detected, add buffer' : ''}.`;
+  routeHint.textContent = usedLive
+    ? `Routing ${pickup} → ${dest} — live route with traffic buffer · ${km.toFixed(1)} km, fastest ~${baseMin} min${liveState.weather && liveState.weather.rain ? ' · rain detected, add buffer' : ''}.`
+    : baseMin !== null
+    ? `Routing ${pickup} → ${dest} — approx ${km.toFixed(1)} km · ~${baseMin} min by distance (live routing busy right now)${liveState.weather && liveState.weather.rain ? ' · rain detected, add buffer' : ''}.`
+    : `Routing ${pickup} → ${dest} — couldn't geocode for exact times. Pick a place from the drop-down suggestions for real times.`;
   hide(planPanel);
   show(routePanel);
   planBtn.disabled = false;
