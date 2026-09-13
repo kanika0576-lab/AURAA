@@ -1621,6 +1621,11 @@ input::placeholder {
   width: fit-content;
 }
 
+.on-route-badge.pct {
+  color: var(--green);
+  background: rgba(23, 163, 103, 0.12);
+}
+
 /* ===== NAME MODAL ===== */
 .modal-overlay {
   position: fixed;

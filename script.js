@@ -207,6 +207,7 @@ async function enableLocation(fromButton = true) {
     const pos = await getPosition();
     const lat = pos.coords.latitude;
     const lon = pos.coords.longitude;
+    if (!isFinite(lat) || !isFinite(lon) || (lat === 0 && lon === 0)) throw new Error('bad position');
     liveState.userLoc = { lat, lon };
 
     // Update profile tag with area name
@@ -231,8 +232,8 @@ async function enableLocation(fromButton = true) {
 
     notify('Location shared. AURA can now find trusted stops near you.');
   } catch {
-    notify('Location unavailable. Please allow access so AURA can find stops near you.', 'alert');
-    liveState.placesStatus.textContent = 'Location access denied · showing demo stops only';
+    notify('Location could not be shared here (needs HTTPS + permission). AURA keeps working with typed places.', 'alert');
+    liveState.placesStatus.textContent = 'Location access unavailable · showing sample stops only';
     renderDemoPlaces();
   } finally {
     btn.textContent = orig;
@@ -390,18 +391,31 @@ async function loadTrustedPlaces() {
       return;
     }
 
-    const midLat = (centerA.lat + centerB.lat) / 2;
-    const midLon = (centerA.lon + centerB.lon) / 2;
+    // Distance to the actual route line (real road path if we have one, else straight corridor)
+    const useGeom = onRoute && routeGeom && routeGeom.length > 1;
+    const abKm = haversine(centerA.lat, centerA.lon, centerB.lat, centerB.lon);
     places.forEach((p) => {
-      p.distKm = haversine(midLat, midLon, p.lat, p.lon);
+      if (useGeom) {
+        const m = distToRoute(p.lat, p.lon, routeGeom);
+        p.offKm = m.off;   // how far off the road line the stop is
+        p.alongKm = m.along; // distance along the route from the start
+      } else {
+        const s = distToSegment(centerA.lat, centerA.lon, centerB.lat, centerB.lon, p.lat, p.lon);
+        p.offKm = s.d;
+        p.alongKm = s.t * abKm;
+      }
     });
-    places.sort((a, b) => a.distKm - b.distKm);
+
+    // Keep stops close to the route line; never show a far-off corner as "on your route"
+    const onPath = places.filter((p) => p.offKm <= 3);
+    if (onPath.length >= 3) places = onPath;
+    places.sort((a, b) => a.alongKm - b.alongKm);
     const best = places.slice(0, 8);
 
     renderPlaces(best, { onRoute });
     setPlacesStatus(
       (onRoute
-        ? `${best.length} trusted stops on your route`
+        ? `${best.length} mid-journey stops on your route`
         : `${best.length} trusted stops near you`) +
         (liveState.weather ? ` · ${liveState.weather.temp}°C · ${liveState.weather.desc}` : ' · open status by your local time')
     );
@@ -434,18 +448,57 @@ function renderPlaces(list, opts) {
         ? 'Closed now'
         : 'Hours not listed';
 
+    let routeLine = '';
+    if (opts.onRoute) {
+      const offText =
+        place.offKm <= 1.2
+          ? ''
+          : place.offKm < 1
+          ? ` · ${Math.round(place.offKm * 1000)} m off the road`
+          : ` · ${place.offKm.toFixed(1)} km off the road`;
+      const pct = routeDistKm > 0 ? Math.min(99, Math.round((place.alongKm / routeDistKm) * 100)) : null;
+      const etaMin = routeDistKm > 0 ? Math.max(2, Math.round((place.alongKm / routeDistKm) * Math.round(routeDistKm / 26 * 60))) : null;
+      routeLine = `<span class="on-route-badge">Mid-journey stop · ~${Math.round(place.alongKm)} km in${offText}</span>` +
+        (pct !== null ? `<span class="on-route-badge pct">${pct}% into trip · reach it in ~${etaMin} min</span>` : '');
+    } else {
+      routeLine = `<small>${dist} from here</small>`;
+    }
+
     const card = document.createElement('div');
     card.className = 'place-card revealed';
     card.innerHTML = `
       <span class="place-icon">${place.icon}</span>
       <strong>${escapeHtml(place.name)}</strong>
-      ${opts.onRoute ? `<span class="on-route-badge">On your route · ${dist}</span>` : `<small>${dist} from here</small>`}
+      ${routeLine}
       <span class="place-status ${statusClass}"><span class="dot"></span> ${statusText}</span>
       <small class="place-hours-detail">${escapeHtml(status.detail)}</small>
       <button class="btn btn-ghost-sm">Directions →</button>
     `;
-    card.querySelector('.btn-ghost-sm').addEventListener('click', () => {
-      notify(`Head to ${place.name} (${dist}). Balanced route, ~${Math.max(2, Math.round(place.distKm * 22))} min away. Check-In stays active.`);
+    card.querySelector('.btn-ghost-sm').addEventListener('click', async () => {
+      const btn = card.querySelector('.btn-ghost-sm');
+      btn.disabled = true;
+      btn.textContent = 'Computing…';
+      const anchor = geoData.pickup || liveState.userLoc;
+      let msg = '';
+      if (anchor && !place._demo) {
+        try {
+          const r = await fetchRoute(anchor.lat, anchor.lon, place.lat, place.lon);
+          if (r) {
+            const min = Math.max(2, Math.round(r.duration / 60));
+            msg = `Head to ${place.name}: ${min} min by the fastest route (${(r.distance / 1000).toFixed(1)} km). Check-In stays active.`;
+          } else {
+            throw new Error('empty');
+          }
+        } catch {
+          const est = Math.max(2, Math.round(place.distKm / 26 * 60));
+          msg = `Head to ${place.name}: ~${est} min. Check-In stays active.`;
+        }
+      } else {
+        msg = `Head to ${place.name} (${dist}). Check-In stays active.`;
+      }
+      notify(msg);
+      btn.textContent = 'Directions →';
+      btn.disabled = false;
     });
     liveState.placesGrid.appendChild(card);
   });
@@ -459,10 +512,10 @@ function escapeHtml(s) {
 
 function renderDemoPlaces() {
   const demo = [
-    { name: 'Café Amara', icon: '☕', distKm: 0.4, tags: { opening_hours: 'Mo–Sa 08:00–23:00' } },
-    { name: 'City Library', icon: '📚', distKm: 0.18, tags: { opening_hours: 'Mo–Fr 09:00–20:00' } },
-    { name: 'Metro Waiting Lounge', icon: '🚇', distKm: 0.35, tags: { opening_hours: '24/7' } },
-    { name: 'Bloom Pharmacy', icon: '💊', distKm: 0.52, tags: { opening_hours: 'Mo–Su 08:00–22:00' } },
+    { name: 'Café Amara', icon: '☕', distKm: 0.4, _demo: true, tags: { opening_hours: 'Mo–Sa 08:00–23:00' } },
+    { name: 'City Library', icon: '📚', distKm: 0.18, _demo: true, tags: { opening_hours: 'Mo–Fr 09:00–20:00' } },
+    { name: 'Metro Waiting Lounge', icon: '🚇', distKm: 0.35, _demo: true, tags: { opening_hours: '24/7' } },
+    { name: 'Bloom Pharmacy', icon: '💊', distKm: 0.52, _demo: true, tags: { opening_hours: 'Mo–Su 08:00–22:00' } },
   ];
   renderPlaces(demo, { onRoute: false });
 }
@@ -495,6 +548,7 @@ const state = {
   checkinEscalated: false,
   checkinNow: false,
   timer: 0,
+  deadline: 0,
   timerInterval: null,
   notified: false,
 };
@@ -542,7 +596,59 @@ async function reverseGeocode(lat, lon) {
   const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}&accept-language=en&addressdetails=1`;
   const res = await fetch(url);
   if (!res.ok) throw new Error('reverse geocode failed');
-  return res.json();
+  const data = await res.json();
+  if (typeof data.display_name !== 'string') throw new Error('bad address');
+  return data;
+}
+
+async function geocodeText(q) {
+  const results = await searchNominatim(q);
+  if (!results.length) return null;
+  return { lat: parseFloat(results[0].lat), lon: parseFloat(results[0].lon) };
+}
+
+function estimateMin(km) {
+  return Math.max(3, Math.round((km / 26) * 60));
+}
+
+// OSRM polyline (precision 5) decoder
+function decodePolyline(str) {
+  const coords = [];
+  let index = 0, lat = 0, lon = 0;
+  while (index < str.length) {
+    let result = 0, shift = 0, b;
+    do { b = str.charCodeAt(index++) - 63; result |= (b & 0x1f) << shift; shift += 5; } while (b >= 0x20);
+    lat += (result & 1) ? ~(result >> 1) : (result >> 1);
+    shift = 0; result = 0;
+    do { b = str.charCodeAt(index++) - 63; result |= (b & 0x1f) << shift; shift += 5; } while (b >= 0x20);
+    lon += (result & 1) ? ~(result >> 1) : (result >> 1);
+    coords.push([lat / 1e5, lon / 1e5]);
+  }
+  return coords;
+}
+
+function distToSegment(lat1, lon1, lat2, lon2, plat, plon) {
+  const dx = lat2 - lat1, dy = lon2 - lon1;
+  const len2 = dx * dx + dy * dy;
+  let t = len2 === 0 ? 0 : ((plat - lat1) * dx + (plon - lon1) * dy) / len2;
+  t = Math.max(0, Math.min(1, t));
+  const cx = lat1 + t * dx, cy = lon1 + t * dy;
+  return { d: haversine(plat, plon, cx, cy), t };
+}
+
+function distToRoute(plat, plon, geom) {
+  let off = Infinity, along = 0, total = 0;
+  for (let i = 0; i < geom.length - 1; i++) {
+    const a = geom[i], b = geom[i + 1];
+    const segKm = haversine(a[0], a[1], b[0], b[1]);
+    const r = distToSegment(a[0], a[1], b[0], b[1], plat, plon);
+    if (r.d < off) {
+      off = r.d;
+      along = total + r.t * segKm;
+    }
+    total += segKm;
+  }
+  return { off, along, total };
 }
 
 function shortName(place) {
@@ -699,6 +805,7 @@ useCurrent.addEventListener('click', async () => {
     const pos = await getPosition();
     const lat = pos.coords.latitude;
     const lon = pos.coords.longitude;
+    if (!isFinite(lat) || !isFinite(lon) || (lat === 0 && lon === 0)) throw new Error('bad position');
     liveState.userLoc = { lat, lon };
     geoData.pickup = { lat, lon };
     try {
@@ -713,7 +820,7 @@ useCurrent.addEventListener('click', async () => {
     } catch { /* keep going */ }
     loadTrustedPlaces();
   } catch {
-    notify('Location unavailable. Please type your pick-up place.', 'alert');
+    notify('Location could not be shared here (needs HTTPS + permission). Please type your pick-up place instead.', 'alert');
   } finally {
     useCurrent.textContent = '⌖ Use my location';
     useCurrent.disabled = false;
@@ -731,12 +838,19 @@ swapBtn.addEventListener('click', () => {
 });
 
 // ===== REAL ROUTING (OSRM) =====
-async function fetchRoute(lat1, lon1, lat2, lon2) {
-  const url = `https://router.project-osrm.org/route/v1/driving/${lon1},${lat1};${lon2},${lat2}?overview=false`;
+let routeGeom = null;   // real road polyline [ [lat,lon], ... ] for the planned journey
+let routeDistKm = 0;
+
+async function fetchRoute(lat1, lon1, lat2, lon2, needGeom = false) {
+  const overview = needGeom ? 'full' : 'false';
+  const url = `https://router.project-osrm.org/route/v1/driving/${lon1},${lat1};${lon2},${lat2}?overview=${overview}`;
   const res = await fetch(url);
   const data = await res.json();
   if (data.code !== 'Ok' || !data.routes.length) return null;
-  return { duration: data.routes[0].duration, distance: data.routes[0].distance };
+  const r = data.routes[0];
+  const out = { duration: r.duration, distance: r.distance };
+  if (needGeom) out.geometry = r.geometry ? decodePolyline(r.geometry) : [[lat1, lon1], [lat2, lon2]];
+  return out;
 }
 
 planBtn.addEventListener('click', async () => {
@@ -754,36 +868,63 @@ planBtn.addEventListener('click', async () => {
   planBtn.textContent = 'Computing real routes…';
   routeHint.textContent = `Geocoding ${pickup} → ${dest}…`;
 
-  if (geoData.pickup && geoData.destination) {
+  // Always try to geocode any place the user typed by hand (auto-picked suggestions are already geocoded)
+  if (!geoData.pickup) {
     try {
-      const route = await fetchRoute(
-        geoData.pickup.lat, geoData.pickup.lon,
-        geoData.destination.lat, geoData.destination.lon
-      );
-      if (route) {
-        const baseMin = Math.max(4, Math.round(route.duration / 60));
-        routes[0].time = baseMin;
-        routes[1].time = Math.round(baseMin * 1.35);
-        routes[2].time = Math.round(baseMin * 1.5);
-        const km = (route.distance / 1000).toFixed(1);
-        state.distanceKm = parseFloat(km);
-        routes[0].desc = `Fastest route · ${km} km`;
-        routes[1].desc = `Time + well-lit roads · ${km} km`;
-        routes[2].desc = `Most backups along ${km} km`;
-      }
-    } catch {
-      // fall back to default times
-    }
+      const g = await geocodeText(pickup);
+      if (g) geoData.pickup = g;
+    } catch { /* keep typed values */ }
   }
+  if (!geoData.destination) {
+    try {
+      const g = await geocodeText(dest);
+      if (g) geoData.destination = g;
+    } catch { /* keep typed values */ }
+  }
+
+  let baseMin = null;
+  let km = null;
+  let geom = null;
+
+  if (geoData.pickup && geoData.destination) {
+    const A = geoData.pickup, B = geoData.destination;
+    km = haversine(A.lat, A.lon, B.lat, B.lon);
+    try {
+      const r = await fetchRoute(A.lat, A.lon, B.lat, B.lon, true);
+      if (r) {
+        baseMin = Math.max(4, Math.round(r.duration / 60));
+        km = r.distance / 1000;
+        geom = r.geometry || null;
+      }
+    } catch { /* fall back to estimate */ }
+    if (baseMin === null && km) baseMin = estimateMin(km);
+  }
+
+  if (baseMin !== null) {
+    routes[0].time = baseMin;
+    routes[1].time = Math.round(baseMin * 1.35);
+    routes[2].time = Math.round(baseMin * 1.5);
+    const kms = km.toFixed(1);
+    routes[0].desc = `Fastest route · ${kms} km`;
+    routes[1].desc = `Time + well-lit roads · ${kms} km`;
+    routes[2].desc = `Most backups along ${kms} km`;
+    state.distanceKm = Math.round(km * 10) / 10;
+  } else {
+    routes[0].time = 24; routes[1].time = 31; routes[2].time = 36;
+    routes[0].desc = 'Metro + walk · Less active after 8 PM';
+    routes[1].desc = 'Bus + main road · Best fit for tonight';
+    routes[2].desc = 'More backup stops · Recovery options';
+    state.distanceKm = null;
+  }
+  routeGeom = geom;
+  routeDistKm = km || 0;
 
   loadTrustedPlaces();
 
   buildRouteOptions();
-  routeHint.textContent = `Routing ${pickup} → ${dest} — three modes from live data${
-    geoData.pickup && geoData.destination ? ' · real distance and time' : ' · geocode both places for real times'
-  }${
-    liveState.weather && liveState.weather.rain ? ' · rain detected, add buffer' : ''
-  }.`;
+  routeHint.textContent = baseMin !== null
+    ? `Routing ${pickup} → ${dest} — real route from live data · ${km.toFixed(1)} km, fastest ~${baseMin} min${liveState.weather && liveState.weather.rain ? ' · rain detected, add buffer' : ''}.`
+    : `Routing ${pickup} → ${dest} — live routing unavailable right now, using typical times${liveState.weather && liveState.weather.rain ? ' · rain detected, add buffer' : ''}.`;
   hide(planPanel);
   show(routePanel);
   planBtn.disabled = false;
@@ -849,19 +990,35 @@ startBtn.addEventListener('click', () => {
   setCheckinStatus('armed');
   startTimer();
   notify(`Journey started. Check-In armed for ${state.pickup} → ${state.destination}.`);
+  loadTrustedPlaces();
 });
 
 function startTimer() {
   clearInterval(state.timerInterval);
+  state.deadline = Date.now() + state.timer * 1000;
+  updateTimerDisplay();
   state.timerInterval = setInterval(() => {
-    state.timer -= 1;
-    if (state.timer >= 0) timerValue.textContent = formatTime(state.timer);
-    if (state.timer <= 0) {
+    const rem = Math.max(0, Math.round((state.deadline - Date.now()) / 1000));
+    state.timer = rem;
+    if (rem > 0) timerValue.textContent = formatTime(rem);
+    if (rem <= 0) {
       clearInterval(state.timerInterval);
+      timerValue.textContent = formatTime(0);
       triggerLateWarning();
     }
-  }, 1000);
+  }, 500);
 }
+
+function updateTimerDisplay() {
+  const rem = Math.max(0, Math.round((state.deadline - Date.now()) / 1000));
+  state.timer = rem;
+  if (rem > 0) timerValue.textContent = formatTime(rem);
+}
+
+// Re-sync the countdown when the tab comes back to foreground
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden && state.timerInterval) updateTimerDisplay();
+});
 
 function triggerLateWarning() {
   state.timer = Math.round(state.route.time * 60 * 0.4);
@@ -1043,6 +1200,7 @@ document.querySelectorAll('.assistant-btn').forEach((btn) => {
       confidenceFill.style.width = `${r.confidence}%`;
       confidenceVal.textContent = `${r.confidence}% High`;
       distEta.innerHTML = `${(2 + Math.random() * 2).toFixed(1)} km left · ETA <strong>${r.time} min</strong>`;
+      startTimer();
       notify(`Re-routed to the ${r.name} route with fresh data. Why: better coverage on main roads.`);
     } else if (text.includes('Feeling uncomfortable')) {
       notify('Nearby: City Library (80 m). Populated area. AURA will check in every 10 minutes.');
