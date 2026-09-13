@@ -1,0 +1,472 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AURA — Awareness · Understanding · Response · Assistance</title>
+  <link rel="stylesheet" href="style.css">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+</head>
+<body>
+
+  <!-- ===== SIDEBAR ===== -->
+  <div class="sidebar-overlay" id="sidebarOverlay"></div>
+
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-logo">
+      <span class="logo-icon">✦</span>
+      <div>
+        <span class="logo-text">AURA</span>
+        <span class="logo-sub">AWARENESS · UNDERSTANDING<br>RESPONSE · ASSISTANCE</span>
+      </div>
+    </div>
+
+    <p class="sidebar-label">Private by design</p>
+    <p class="sidebar-tip">You control every alert.</p>
+
+    <nav class="sidebar-nav">
+      <a href="#top" class="nav-item active"><span class="nav-icon">▦</span> Dashboard</a>
+      <a href="#app" class="nav-item"><span class="nav-icon">⌖</span> Plan a journey</a>
+      <a href="#checkin" class="nav-item"><span class="nav-icon">◌</span> AURA Check-In</a>
+      <a href="#places" class="nav-item"><span class="nav-icon">♥</span> Saved places</a>
+      <a href="#why" class="nav-item"><span class="nav-icon">✦</span> Why AURA</a>
+    </nav>
+
+    <div class="sidebar-footer">
+      <div class="profile">
+        <span class="avatar" id="profileAvatar">T</span>
+        <div>
+          <span class="profile-name" id="profileName">Traveler</span>
+          <span class="profile-tag" id="profileLoc">Local time synced</span>
+        </div>
+      </div>
+      <button class="mobile-overlay-btn" id="sidebarClose">Close ✕</button>
+    </div>
+  </aside>
+
+  <!-- ===== MENU BUTTON (mobile) ===== -->
+  <button class="menu-fab" id="menuBtn" aria-label="Open menu">☰</button>
+
+  <!-- ===== MAIN CONTENT ===== -->
+  <div class="main-content">
+
+    <!-- HERO -->
+    <section class="hero" id="top">
+      <div class="hero-bg-glow"></div>
+      <div class="hero-container">
+        <p class="hero-tag">AWARENESS · UNDERSTANDING · RESPONSE · ASSISTANCE</p>
+        <h1 class="hero-title">Never decide with <span class="gradient-text">less information</span> than AURA has.</h1>
+        <p class="hero-subtitle">A context-aware travel intelligence platform. AURA doesn't just route you from A to B — it makes sure every decision is made with full context about lighting, crowds, history, and what happens when plans change.</p>
+        <div class="hero-actions">
+          <a href="#app" class="btn btn-primary">Plan a journey</a>
+          <a href="#how" class="btn btn-outline">See how it works</a>
+        </div>
+        <div class="hero-badges">
+          <span class="badge">✓ Real routing from live data</span>
+          <span class="badge">✓ Communicates uncertainty honestly</span>
+          <span class="badge">✓ Privacy-first, user-in-control</span>
+        </div>
+        <div class="live-strip">
+          <span class="live-item">🕒 <span id="liveClock">--:--</span></span>
+          <span class="live-item">☼ <span id="weatherInfo">Allow location to see the weather</span></span>
+          <button class="btn btn-outline-sm" id="allowLocBtn">⌖ Allow location</button>
+        </div>
+        <div class="rain-banner hidden" id="rainBanner">
+          <span>☔</span>
+          <p><strong>Rain detected.</strong> Routes may change. AURA recommends the Balanced or Resilient route tonight. Consider adding an ETA buffer.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ROUTE MODES -->
+    <section class="modes" id="modes">
+      <div class="container">
+        <h2 class="section-label">Three modes</h2>
+        <p class="section-sub">Live conditions shape every recommendation.</p>
+        <div class="modes-grid">
+          <div class="mode-card">
+            <div class="mode-icon fast">⚡</div>
+            <h3>Fast</h3>
+            <p class="mode-desc">Shortest time, shortest route. Minimal signals.</p>
+            <div class="mode-bar"><div class="mode-fill" style="width:95%"></div></div>
+            <span class="mode-label-sm">Time focus</span>
+          </div>
+          <div class="mode-card featured">
+            <div class="mode-icon balanced">⚖️</div>
+            <h3>Balanced</h3>
+            <p class="mode-desc">Time plus nearby amenities and fallback stops along the way.</p>
+            <div class="mode-bar"><div class="mode-fill" style="width:70%"></div></div>
+            <span class="mode-label-sm">Time + Context — Recommended</span>
+          </div>
+          <div class="mode-card">
+            <div class="mode-icon resilient">🛡️</div>
+            <h3>Resilient</h3>
+            <p class="mode-desc">Most recovery options — escape routes and waiting points if plans break.</p>
+            <div class="mode-bar"><div class="mode-fill" style="width:45%"></div></div>
+            <span class="mode-label-sm">Most recovery</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- THE PROBLEM -->
+    <section class="problem" id="why">
+      <div class="container">
+        <div class="problem-grid">
+          <div class="problem-text">
+            <h2 class="section-label">The problem</h2>
+            <h3 class="problem-heading">Navigation apps optimize for time.<br><span class="gradient-text">AURA optimizes for information.</span></h3>
+            <p>Existing apps minimize minutes. They ignore lighting, crowd density, area history, and what happens when a bus is cancelled mid-journey — the exact factors that shape confidence while traveling.</p>
+          </div>
+          <div class="problem-stats">
+            <div class="stat-card">
+              <span class="stat-num">0%</span>
+              <span class="stat-label">Apps consider lighting conditions</span>
+            </div>
+            <div class="stat-card">
+              <span class="stat-num">0%</span>
+              <span class="stat-label">Apps factor in crowd density</span>
+            </div>
+            <div class="stat-card">
+              <span class="stat-num">0%</span>
+              <span class="stat-label">Apps offer fallback if plans break</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- HOW IT WORKS -->
+    <section class="how" id="how">
+      <div class="container">
+        <h2 class="section-label">How it works</h2>
+        <h3 class="section-title">One continuous journey. <span class="gradient-text">Five features.</span></h3>
+        <div class="steps">
+          <div class="step">
+            <div class="step-num">01</div>
+            <div class="step-content">
+              <h4>Set the trip</h4>
+              <p>Enter pickup and destination. AURA geocodes real places and turns on a silent Check-In for your expected arrival — no panic button required.</p>
+            </div>
+          </div>
+          <div class="step">
+            <div class="step-num">02</div>
+            <div class="step-content">
+              <h4>Choose with context</h4>
+              <p>Fast, Balanced, or Resilient — each with a visible confidence meter and a human explanation computed from real data.</p>
+            </div>
+          </div>
+          <div class="step">
+            <div class="step-num">03</div>
+            <div class="step-content">
+              <h4>Travel with live awareness</h4>
+              <p>Clock, ETA countdown, distance remaining, and a one-tap situation assistant. If plans change, AURA re-routes or finds a place to wait.</p>
+            </div>
+          </div>
+          <div class="step">
+            <div class="step-num">04</div>
+            <div class="step-content">
+              <h4>Check-In, silently</h4>
+              <p>Check-In confirms safe arrival automatically. If you're late, a gentle nudge comes first — escalation to a trusted contact happens only as a last resort.</p>
+            </div>
+          </div>
+          <div class="step">
+            <div class="step-num">05</div>
+            <div class="step-content">
+              <h4>Arrive & confirm</h4>
+              <p>Check-in confirms automatically. Trusted contact was never notified. Journey log stays on your device.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- CORE FEATURES -->
+    <section class="features" id="features">
+      <div class="container">
+        <h2 class="section-label">Core features</h2>
+        <h3 class="section-title">Six mechanics that change <span class="gradient-text">what a journey means.</span></h3>
+        <div class="features-grid">
+          <div class="feature-card">
+            <div class="feature-icon">🗺️</div>
+            <h4>Three journey modes</h4>
+            <p><strong>Fast</strong> = shortest time. <strong>Balanced</strong> = time + contextual safety. <strong>Resilient</strong> = most recovery options — shown visually, not just as a label.</p>
+          </div>
+          <div class="feature-card">
+            <div class="feature-icon">🔍</div>
+            <h4>Explainability, not just scores</h4>
+            <p>Every mode explains itself from the data behind it: distance, minutes, and what amenities or fallback stops it actually passes.</p>
+          </div>
+          <div class="feature-card">
+            <div class="feature-icon">📊</div>
+            <h4>Visible confidence meter</h4>
+            <p>Every route carries a Data Confidence score computed from real signals. AURA admits what it doesn't know instead of faking certainty.</p>
+          </div>
+          <div class="feature-card">
+            <div class="feature-icon">☕</div>
+            <h4>Women-friendly stop finder</h4>
+            <p>Real places near your route — cafés, libraries, shops — pulled from live data, with distance and opening hours.</p>
+          </div>
+          <div class="feature-card">
+            <div class="feature-icon">⚡</div>
+            <h4>One-tap situation assistant</h4>
+            <p>Re-route with fresh data, find a waiting point, or share your trip with a trusted contact — each with one tap.</p>
+          </div>
+          <div class="feature-card">
+            <div class="feature-icon">🔒</div>
+            <h4>AURA Check-In</h4>
+            <p>The silent guardian. No check-in → gentle nudge → escalation path to a trusted contact — without you ever needing to trigger anything.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- SAVED PLACES / TRUSTED STOPS -->
+    <section class="places-section" id="places">
+      <div class="container">
+        <h2 class="section-label">Saved places</h2>
+        <h3 class="section-title">Places you can <span class="gradient-text">trust on the way.</span></h3>
+        <p class="section-sub">Mid-journey stops near your route — so if you need to pause or reset, you know exactly where to go and whether it's open right now.</p>
+
+        <div class="places-toolbar">
+          <button class="btn btn-outline-sm" id="allowLocPlaces">⌖ Allow location to find stops near you</button>
+          <span class="places-status" id="placesStatus">Sample stops shown · share location for live results</span>
+          <span class="live-item">🕒 Right now: <span id="placesClock">--:--</span></span>
+          <button class="btn btn-ghost-sm" id="refreshPlaces">↻ Refresh</button>
+        </div>
+
+        <div class="places-grid" id="placesGrid"></div>
+        <p class="places-note">♥ Trusted stops come from live map data near your journey. Your saved places, route history and location stay on your device.</p>
+      </div>
+    </section>
+
+    <!-- TRY IT NOW (Interactive App) -->
+    <section class="app-section" id="app">
+      <div class="container">
+        <h2 class="section-label">Try AURA now</h2>
+        <h3 class="section-title">A real working prototype. <span class="gradient-text">No simulation.</span></h3>
+        <p class="section-sub">Enter any two places. AURA geocodes them, computes routes, scores confidence, and runs a live Check-In.</p>
+
+        <div class="app-wrapper" id="checkin">
+          <!-- Plan Step -->
+          <div class="app-panel" id="planPanel">
+            <h4>Plan your journey</h4>
+            <p class="panel-hint">Pick-up and destination — street addresses, landmarks, or any place name.</p>
+            <div class="input-group">
+              <div class="input-head">
+                <label>Pick-up</label>
+                <button class="use-here" id="useCurrent">⌖ Use my location</button>
+              </div>
+              <input type="text" id="pickup" placeholder="e.g. Faridabad, Haryana, India" autocomplete="off">
+              <div class="suggestions" id="pickupSuggestions"></div>
+            </div>
+            <button class="swap-btn" id="swapBtn" title="Swap">⇄</button>
+            <div class="input-group">
+              <label>Destination</label>
+              <input type="text" id="destination" placeholder="e.g. Delhi, India" autocomplete="off">
+              <div class="suggestions" id="destinationSuggestions"></div>
+            </div>
+            <div class="input-group">
+              <label>Leaving at</label>
+              <div class="chip-row">
+                <button class="chip active">Now</button>
+                <button class="chip">7:30 PM</button>
+                <button class="chip">8:30 PM</button>
+              </div>
+            </div>
+            <div class="input-group">
+              <label>Traveling</label>
+              <div class="chip-row">
+                <button class="chip active">On my own</button>
+                <button class="chip">With friends</button>
+              </div>
+            </div>
+            <div class="input-group">
+              <label>ETA Buffer</label>
+              <div class="buffer-options">
+                <button class="buffer-btn active" data-val="0">0</button>
+                <button class="buffer-btn" data-val="10">+10 min</button>
+                <button class="buffer-btn" data-val="20">+20 min</button>
+              </div>
+            </div>
+            <div class="checkin-toggle">
+              <span class="toggle-dot"></span>
+              <div>
+                <strong>Passive Check-In</strong>
+                <p>Nudge if you're late, escalate only as a last resort.</p>
+              </div>
+            </div>
+            <div class="input-group">
+              <label>Trusted contact</label>
+              <input type="text" id="contactName" placeholder="e.g. Priya (sister)" autocomplete="off">
+            </div>
+            <button class="btn btn-primary btn-full" id="planBtn">Plan journey</button>
+          </div>
+
+          <!-- Route Selection (hidden initially) -->
+          <div class="app-panel hidden" id="routePanel">
+            <h4>Choose your route</h4>
+            <p class="panel-hint" id="routeHint">Three modes computed from live data.</p>
+            <div class="route-options" id="routeOptions"></div>
+            <button class="btn btn-primary btn-full" id="startBtn" disabled>Select a route to start</button>
+            <button class="btn btn-ghost btn-full" id="backToPlan">← Back to planning</button>
+          </div>
+
+          <!-- Live Journey (hidden initially) -->
+          <div class="app-panel hidden" id="journeyPanel">
+            <div class="journey-header">
+              <div>
+                <span class="light-label">LIVE ROUTE · <span id="liveRouteName">Balanced</span></span>
+                <div class="timer-value" id="timerValue">00:00</div>
+                <div class="dist-eta" id="distEta">3.2 km left · ETA <strong>31 min</strong></div>
+              </div>
+              <div class="journey-map">✦</div>
+            </div>
+            <div class="confidence-meter">
+              <span>Data Confidence</span>
+              <div class="meter-bar"><div class="meter-fill" id="confidenceFill"></div></div>
+              <span id="confidenceVal">—</span>
+            </div>
+            <div class="situation-assistant">
+              <h5>Situation assistant</h5>
+              <p>One tap. One concrete next step.</p>
+              <div class="assistant-actions">
+                <button class="assistant-btn">🔄 Re-route now</button>
+                <button class="assistant-btn">😟 Feeling uncomfortable</button>
+                <button class="assistant-btn">📍 Share this trip</button>
+                <button class="assistant-btn">☕ Find a place to wait</button>
+              </div>
+            </div>
+            <div class="checkin-status" id="checkinStatus">
+              <div class="checkin-dot armed" id="checkinDot"></div>
+              <div>
+                <strong id="checkinHeadline">Check-In Armed</strong>
+                <p id="checkinDetail">Confirms arrival automatically.</p>
+              </div>
+            </div>
+
+            <div class="escalation-card hidden" id="escalationCard">
+              <p class="escalation-title">⚠ Escalation path ready.</p>
+              <p class="escalation-hint">You didn't check in. AURA prepared a message for your contact. This is exactly what would be sent:</p>
+              <div class="msg-box" id="escalationMsg"></div>
+              <div class="escalation-actions">
+                <button class="btn btn-primary btn-sm" id="sendMsgBtn">Send to contact</button>
+                <button class="btn btn-outline btn-sm" id="copyMsgBtn">Copy message</button>
+                <button class="btn btn-ghost btn-sm" id="cancelEscalation">Cancel</button>
+              </div>
+            </div>
+
+            <div class="journey-actions">
+              <button class="btn btn-primary btn-full" id="checkinNowBtn">Check in now</button>
+              <button class="btn btn-outline btn-full" id="arrivedBtn">I've arrived</button>
+            </div>
+          </div>
+
+          <!-- Arrival (hidden initially) -->
+          <div class="app-panel hidden" id="arrivedPanel">
+            <div class="arrived-icon checkmark" id="arrivedIcon">✓</div>
+            <h4 id="arrivedTitle">You've arrived.</h4>
+            <p id="arrivedSub">Check-In confirmed automatically.</p>
+            <div class="arrived-details" id="arrivedDetails">
+              <span>✓ Trusted contact was never notified.</span>
+              <span>✓ Journey log stays on your device.</span>
+            </div>
+            <button class="btn btn-primary btn-full" id="planAnother">Plan another journey</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- PRINCIPLES -->
+    <section class="principles" id="principles">
+      <div class="container">
+        <h2 class="section-label">Principles</h2>
+        <h3 class="section-title">The ground rules under <span class="gradient-text">every feature.</span></h3>
+        <div class="principles-grid">
+          <div class="principle-card">
+            <div class="principle-icon">🔐</div>
+            <h4>Privacy-first, user-in-control</h4>
+            <p>No data overreach. Location stays in the journey and is shared only when you choose. You always make the final call.</p>
+          </div>
+          <div class="principle-card">
+            <div class="principle-icon">⚖️</div>
+            <h4>No overclaiming safety</h4>
+            <p>AURA never says a route is "safe." It communicates uncertainty honestly — the confidence meter exists because certainty can't be faked.</p>
+          </div>
+          <div class="principle-card">
+            <div class="principle-icon">🔄</div>
+            <h4>Real-time adaptability</h4>
+            <p>A journey is a living plan. AURA re-routes from fresh data and tells you what it changed and why.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- DATA -->
+    <section class="data-section" id="data">
+      <div class="container">
+        <h2 class="section-label">Data</h2>
+        <h3 class="section-title">Built on open, honest, <span class="gradient-text">live data.</span></h3>
+        <p class="section-sub">No accounts, no keys, no tracking. The roadmap for production adds richer signals:</p>
+        <div class="data-grid">
+          <div class="data-card">
+            <span class="data-num">01</span>
+            <h4>Municipal lighting data</h4>
+            <p>Cities publish street-lamp coverage. That's the baseline for "well-lit."</p>
+          </div>
+          <div class="data-card">
+            <span class="data-num">02</span>
+            <h4>Crowd-density APIs</h4>
+            <p>Transit and foot-traffic feeds that indicate where streets are populated at a given hour.</p>
+          </div>
+          <div class="data-card">
+            <span class="data-num">03</span>
+            <h4>Crowd-sourced reports</h4>
+            <p>Opt-in, aggregated, private-by-design reports from the women who use it.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- FOOTER -->
+    <footer class="footer">
+      <div class="container">
+        <div class="footer-content">
+          <div class="footer-brand">
+            <span class="logo-icon">✦</span>
+            <span class="logo-text">AURA</span>
+            <p>Awareness · Understanding · Response · Assistance — an AI-powered travel intelligence platform.</p>
+          </div>
+          <div class="footer-links">
+            <a href="#how">How it works</a>
+            <a href="#features">Features</a>
+            <a href="#app">Try it</a>
+            <a href="#principles">Principles</a>
+            <a href="#data">Data</a>
+          </div>
+        </div>
+        <div class="footer-bottom">
+          <p>AURA doesn't decide for her — it makes sure she's never deciding with less information than the app has.</p>
+        </div>
+      </div>
+    </footer>
+
+  </div>
+
+  <div class="notification" id="notification"></div>
+
+  <!-- ===== NAME MODAL ===== -->
+  <div class="modal-overlay" id="nameModal">
+    <div class="modal-card">
+      <span class="modal-icon">✦</span>
+      <h3>Welcome to AURA</h3>
+      <p>What should we call you? AURA will show your name and personalize your trip alerts.</p>
+      <input type="text" id="nameInput" placeholder="Your name" maxlength="24" autocomplete="off">
+      <button class="btn btn-primary btn-full" id="nameSubmit">Continue</button>
+      <button class="btn btn-ghost btn-full" id="nameSkip">Skip for now</button>
+    </div>
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>
