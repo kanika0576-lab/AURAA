@@ -699,6 +699,7 @@ const stops = ['Café Amara', 'City Library', 'Bloom Pharmacy', 'Metro Waiting L
 
 // ===== GEOCODING =====
 const geoData = { pickup: null, destination: null };
+const geoLabel = {};
 
 async function searchNominatim(q) {
   const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)}&addressdetails=1&limit=6&accept-language=en&countrycodes=in`;
@@ -825,6 +826,7 @@ function renderSuggestions(listEl, results, input, key) {
     div.addEventListener('click', () => {
       input.value = place.display_name;
       geoData[key] = { lat: parseFloat(place.lat), lon: parseFloat(place.lon) };
+      geoLabel[key] = place.display_name;
       listEl.classList.remove('open');
     });
     listEl.appendChild(div);
@@ -835,6 +837,11 @@ function renderSuggestions(listEl, results, input, key) {
 function setupAutocomplete(input, listEl, key) {
   let timer = null;
   input.addEventListener('input', () => {
+    const typed = input.value.trim();
+    if (geoLabel[key] && typed !== geoLabel[key]) {
+      delete geoData[key];
+      delete geoLabel[key];
+    }
     clearTimeout(timer);
     const q = input.value.trim();
     if (q.length < 3) {
@@ -1004,6 +1011,9 @@ swapBtn.addEventListener('click', () => {
   const g = geoData.pickup;
   geoData.pickup = geoData.destination;
   geoData.destination = g;
+  const gl = geoLabel.pickup;
+  geoLabel.pickup = geoLabel.destination;
+  geoLabel.destination = gl;
 });
 
 // ===== REAL ROUTING (OSRM) =====
@@ -1108,6 +1118,8 @@ planBtn.addEventListener('click', async () => {
     routes[1].desc = 'Bus + main road · Best fit for tonight';
     routes[2].desc = 'More backup stops · Recovery options';
     state.distanceKm = null;
+    if (!geoData.pickup) notify(`Pickup "${pickup}" was not found on the map. Choose from the suggestions.`, 'alert');
+    if (!geoData.destination) notify(`Destination "${dest}" was not found on the map. Choose from the suggestions.`, 'alert');
   }
   routeGeom = geom;
   routeDistKm = km || 0;
