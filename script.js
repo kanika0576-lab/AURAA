@@ -592,6 +592,34 @@ async function searchNominatim(q) {
   return res.json();
 }
 
+// Combined geocoder: Nominatim first, Photon (Komoot) as backup when Nominatim is down/rate-limited
+async function searchPlaces(q) {
+  try {
+    const results = await searchNominatim(q);
+    if (results.length) return results;
+  } catch { /* try backup */ }
+  try {
+    const url = `https://photon.komoot.io/api/?q=${encodeURIComponent(q)}&limit=5&lang=en`;
+    const res = await fetch(url);
+    if (!res.ok) return [];
+    const data = await res.json();
+    const feats = data.features || [];
+    return feats.map((f) => {
+      const p = f.properties || {};
+      const c = f.geometry && f.geometry.coordinates;
+      const parts = [p.name, p.street, p.city, p.state, p.country].filter(Boolean);
+      return {
+        lat: c ? String(c[1]) : '0',
+        lon: c ? String(c[0]) : '0',
+        display_name: parts.join(', ') || (p.name || ''),
+        address: p,
+      };
+    });
+  } catch {
+    return [];
+  }
+}
+
 async function reverseGeocode(lat, lon) {
   const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}&accept-language=en&addressdetails=1`;
   const res = await fetch(url);
@@ -602,7 +630,7 @@ async function reverseGeocode(lat, lon) {
 }
 
 async function geocodeText(q) {
-  const results = await searchNominatim(q);
+  const results = await searchPlaces(q);
   if (!results.length) return null;
   return { lat: parseFloat(results[0].lat), lon: parseFloat(results[0].lon) };
 }
@@ -692,7 +720,7 @@ function setupAutocomplete(input, listEl, key) {
     listEl.classList.add('open');
     timer = setTimeout(async () => {
       try {
-        const results = await searchNominatim(q);
+        const results = await searchPlaces(q);
         renderSuggestions(listEl, results, input, key);
       } catch {
         listEl.innerHTML = '<div class="suggestion-empty">Search unavailable. Please type the full place name.</div>';
@@ -841,16 +869,37 @@ swapBtn.addEventListener('click', () => {
 let routeGeom = null;   // real road polyline [ [lat,lon], ... ] for the planned journey
 let routeDistKm = 0;
 
+const OSRM_SERVERS = [
+  'https://router.project-osrm.org',
+  'https://router-eu.project-osrm.org',
+  'https://router-us.project-osrm.org',
+];
+
 async function fetchRoute(lat1, lon1, lat2, lon2, needGeom = false) {
   const overview = needGeom ? 'full' : 'false';
-  const url = `https://router.project-osrm.org/route/v1/driving/${lon1},${lat1};${lon2},${lat2}?overview=${overview}`;
-  const res = await fetch(url);
-  const data = await res.json();
-  if (data.code !== 'Ok' || !data.routes.length) return null;
-  const r = data.routes[0];
-  const out = { duration: r.duration, distance: r.distance };
-  if (needGeom) out.geometry = r.geometry ? decodePolyline(r.geometry) : [[lat1, lon1], [lat2, lon2]];
-  return out;
+  let lastErr = new Error('no servers');
+  for (const base of OSRM_SERVERS) {
+    try {
+      const url = `${base}/route/v1/driving/${lon1},${lat1};${lon2},${lat2}?overview=${overview}`;
+      const res = await fetch(url);
+      if (!res.ok) {
+        lastErr = new Error(`${base} -> ${res.status}`);
+        continue;
+      }
+      const data = await res.json();
+      if (data.code !== 'Ok' || !data.routes.length) {
+        lastErr = new Error(`${base} -> ${data.code}`);
+        continue;
+      }
+      const r = data.routes[0];
+      const out = { duration: r.duration, distance: r.distance };
+      if (needGeom) out.geometry = r.geometry ? decodePolyline(r.geometry) : [[lat1, lon1], [lat2, lon2]];
+      return out;
+    } catch (err) {
+      lastErr = err;
+    }
+  }
+  throw lastErr;
 }
 
 planBtn.addEventListener('click', async () => {
