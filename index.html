@@ -298,7 +298,12 @@
             </div>
             <div class="input-group">
               <label>Trusted contact</label>
-              <input type="text" id="contactName" placeholder="e.g. Priya (sister)" autocomplete="off">
+              <input type="text" id="contactName" placeholder="e.g. Anjali (sister)" autocomplete="off">
+            </div>
+            <div class="input-group">
+              <label>Contact's number (with country code)</label>
+              <input type="tel" id="contactPhone" placeholder="e.g. +91 98765 43210" autocomplete="off">
+              <small class="field-hint">AURA sends the escalation message here if you miss a check-in.</small>
             </div>
             <button class="btn btn-primary btn-full" id="planBtn">Plan journey</button>
           </div>
@@ -350,8 +355,9 @@
               <p class="escalation-hint">You didn't check in. AURA prepared a message for your contact. This is exactly what would be sent:</p>
               <div class="msg-box" id="escalationMsg"></div>
               <div class="escalation-actions">
-                <button class="btn btn-primary btn-sm" id="sendMsgBtn">Send to contact</button>
-                <button class="btn btn-outline btn-sm" id="copyMsgBtn">Copy message</button>
+                <button class="btn btn-primary btn-sm" id="sendWhatsAppBtn">Send via WhatsApp</button>
+                <button class="btn btn-outline btn-sm" id="sendSmsBtn">Send via SMS</button>
+                <button class="btn btn-ghost btn-sm" id="copyMsgBtn">Copy message</button>
                 <button class="btn btn-ghost btn-sm" id="cancelEscalation">Cancel</button>
               </div>
             </div>

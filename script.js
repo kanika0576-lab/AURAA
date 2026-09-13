@@ -128,6 +128,20 @@ function notify(message, level = 'info') {
   notifyTimer = setTimeout(() => notificationEl.classList.remove('show'), 4500);
 }
 
+// Fetch with a hard timeout so a slow/hanging server never freezes the UI
+async function fetchWithTimeout(url, opts = {}, ms = 10000) {
+  const ctrl = new AbortController();
+  const id = setTimeout(() => ctrl.abort(), ms);
+  try {
+    const res = await fetch(url, { ...opts, signal: ctrl.signal });
+    clearTimeout(id);
+    return res;
+  } catch (err) {
+    clearTimeout(id);
+    throw err;
+  }
+}
+
 // ============================================================
 // LOCATION · WEATHER · TRUSTED STOPS
 // ============================================================
@@ -176,7 +190,7 @@ function isRainy(code, precip) {
 
 async function fetchWeather(lat, lon) {
   const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,precipitation,weather_code&timezone=auto`;
-  const res = await fetch(url);
+  const res = await fetchWithTimeout(url, {}, 8000);
   const data = await res.json();
   const c = data.current;
   return {
@@ -227,8 +241,8 @@ async function enableLocation(fromButton = true) {
       liveState.weatherInfo.textContent = 'Weather unavailable';
     }
 
-    // Trusted stops around the user
-    await loadTrustedPlaces();
+    // Trusted stops around the user (runs in background; buttons unlock right away)
+    loadTrustedPlaces();
 
     notify('Location shared. AURA can now find trusted stops near you.');
   } catch {
@@ -292,10 +306,59 @@ function haversine(lat1, lon1, lat2, lon2) {
 }
 
 const OVERPASS_SERVERS = [
-  'https://overpass-api.de/api/interpreter',
+  'https://overpass.osm.ch/api/interpreter',   // fast, but may not cover every country
+  'https://overpass-api.de/api/interpreter',   // main public server (aggressive rate-limit)
   'https://overpass.kumi.systems/api/interpreter',
-  'https://overpass.osm.jp/api/interpreter',
+  'https://maps.mail.ru/osm/tools/overpass/api/interpreter',
 ];
+
+// Small-area fallback that uses the plain OpenStreetMap API when Overpass is blocked
+async function queryOsmMap(lat, lon) {
+  const d = 0.012;
+  const bx = `${(lon - d).toFixed(4)},${(lat - d).toFixed(4)},${(lon + d).toFixed(4)},${(lat + d).toFixed(4)}`;
+  const res = await fetchWithTimeout(`https://api.openstreetmap.org/api/0.6/map?bbox=${bx}`, {}, 12000);
+  if (!res.ok) throw new Error(`osmapi ${res.status}`);
+  const xml = await res.text();
+  const allowed = new Set(['cafe', 'restaurant', 'fast_food', 'ice_cream', 'library', 'pharmacy', 'bank', 'police', 'doctors', 'hospital', 'shelter']);
+  const shops = new Set(['convenience', 'supermarket']);
+  const places = [];
+  const nodeRe = /<node id="\d+" lat="([-.\d]+)" lon="([-.\d]+)">([\s\S]*?)<\/node>/g;
+  let m;
+  while ((m = nodeRe.exec(xml)) !== null) {
+    const la = parseFloat(m[1]), lo = parseFloat(m[2]);
+    const tags = {};
+    const tagRe = /<tag k="([^"]+)" v="([^"]*)"/g;
+    let tm;
+    while ((tm = tagRe.exec(m[3])) !== null) tags[tm[1]] = tm[2];
+    if (!tags.name) continue;
+    if (!allowed.has(tags.amenity) && !shops.has(tags.shop)) continue;
+    places.push({ name: tags.name, icon: placeIcon(tags), tags, lat: la, lon: lo });
+  }
+  return places;
+}
+
+// localStorage cache: keep real trusted stops so Saved Places never dies with the map servers (30 min TTL)
+function placesCacheKey(lat, lon) {
+  return `aura_places_${Math.round(lat * 20) / 20},${Math.round(lon * 20) / 20}`;
+}
+function loadPlacesCache(key) {
+  if (!key) return null;
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return null;
+    const data = JSON.parse(raw);
+    if (!data || !data.places || Date.now() - data.t > 30 * 60 * 1000) return null;
+    return data.places;
+  } catch {
+    return null;
+  }
+}
+function savePlacesCache(key, places) {
+  if (!key || !places) return;
+  try {
+    localStorage.setItem(key, JSON.stringify({ t: Date.now(), places }));
+  } catch { /* storage full — ignore */ }
+}
 
 async function queryTrustedPlaces(lat1, lon1, lat2, lon2) {
   const south = Math.min(lat1, lat2) - 0.03;
@@ -303,21 +366,21 @@ async function queryTrustedPlaces(lat1, lon1, lat2, lon2) {
   const west = Math.min(lon1, lon2) - 0.03;
   const east = Math.max(lon1, lon2) + 0.03;
   const bbox = `${south},${west},${north},${east}`;
-  const query = `[out:json][timeout:25];
+  const query = `[out:json][timeout:15];
 (
   node["amenity"~"^(cafe|restaurant|fast_food|ice_cream|library|pharmacy|bank|police|doctors|hospital|shelter)$"](${bbox});
   way["amenity"~"^(cafe|restaurant|fast_food|library|pharmacy|bank|police|shelter)$"](${bbox});
   node["shop"~"^(convenience|supermarket)$"](${bbox});
 );
-out body 60;`;
+out body 40;`;
 
   let lastErr = new Error('no servers');
   for (const server of OVERPASS_SERVERS) {
     try {
-      const res = await fetch(server, {
+      const res = await fetchWithTimeout(server, {
         method: 'POST',
         body: `data=${encodeURIComponent(query)}`,
-      });
+      }, 7000);
       if (!res.ok) {
         lastErr = new Error(`${server} -> ${res.status}`);
         continue;
@@ -341,12 +404,35 @@ out body 60;`;
           lon,
         });
       });
-      return places;
+      if (places.length) return places;          // region-limited mirrors return 0 — keep trying
+      lastErr = new Error(`${server} -> empty`);
     } catch (err) {
       lastErr = err;
     }
   }
   throw lastErr;
+}
+
+function scorePlaces(places, centerA, centerB, onRoute) {
+  const useGeom = onRoute && routeGeom && routeGeom.length > 1;
+  const abKm = haversine(centerA.lat, centerA.lon, centerB.lat, centerB.lon);
+  places.forEach((p) => {
+    if (useGeom) {
+      const mt = distToRoute(p.lat, p.lon, routeGeom);
+      p.offKm = mt.off;    // how far off the road line the stop is
+      p.alongKm = mt.along; // distance along the route from the start
+    } else {
+      const s = distToSegment(centerA.lat, centerA.lon, centerB.lat, centerB.lon, p.lat, p.lon);
+      p.offKm = s.d;
+      p.alongKm = s.t * abKm;
+      p.distKm = haversine(centerA.lat, centerA.lon, p.lat, p.lon);
+    }
+  });
+  // Keep stops close to the route line; never show a far-off corner as "on your route"
+  const onPath = places.filter((p) => p.offKm <= 3);
+  if (onPath.length >= 3) places = onPath;
+  places.sort((a, b) => a.alongKm - b.alongKm);
+  return places.slice(0, 8);
 }
 
 async function loadTrustedPlaces() {
@@ -373,10 +459,13 @@ async function loadTrustedPlaces() {
 
   setPlacesStatus('Searching live data for trusted stops…');
   liveState.placesGrid.innerHTML = '<div class="empty-places">Searching trusted stops…</div>';
+
+  const cacheKeyA = placesCacheKey(centerA.lat, centerA.lon);
+  const cacheKeyMid = placesCacheKey((centerA.lat + centerB.lat) / 2, (centerA.lon + centerB.lon) / 2);
+
+  // Path 1: live Overpass search
   try {
     let places = await queryTrustedPlaces(centerA.lat, centerA.lon, centerB.lat, centerB.lon);
-
-    // Dedupe by name
     const seen = new Set();
     places = places.filter((p) => {
       const k = p.name.toLowerCase();
@@ -384,45 +473,58 @@ async function loadTrustedPlaces() {
       seen.add(k);
       return true;
     });
+    if (!places.length) throw new Error('none');
 
-    if (!places.length) {
-      setPlacesStatus('No trusted stops found in this area yet — try planning a journey or moving around.');
-      renderEmptyState('No trusted stops here yet. Try planning a journey so AURA scans along your route, or move to a busier area and refresh.');
-      return;
-    }
-
-    // Distance to the actual route line (real road path if we have one, else straight corridor)
-    const useGeom = onRoute && routeGeom && routeGeom.length > 1;
-    const abKm = haversine(centerA.lat, centerA.lon, centerB.lat, centerB.lon);
-    places.forEach((p) => {
-      if (useGeom) {
-        const m = distToRoute(p.lat, p.lon, routeGeom);
-        p.offKm = m.off;   // how far off the road line the stop is
-        p.alongKm = m.along; // distance along the route from the start
-      } else {
-        const s = distToSegment(centerA.lat, centerA.lon, centerB.lat, centerB.lon, p.lat, p.lon);
-        p.offKm = s.d;
-        p.alongKm = s.t * abKm;
-      }
-    });
-
-    // Keep stops close to the route line; never show a far-off corner as "on your route"
-    const onPath = places.filter((p) => p.offKm <= 3);
-    if (onPath.length >= 3) places = onPath;
-    places.sort((a, b) => a.alongKm - b.alongKm);
-    const best = places.slice(0, 8);
+    const best = scorePlaces(places, centerA, centerB, onRoute);
+    if (!best.length) throw new Error('none on route');
 
     renderPlaces(best, { onRoute });
+    savePlacesCache(cacheKeyA, best);
+    if (cacheKeyMid) savePlacesCache(cacheKeyMid, best);
     setPlacesStatus(
       (onRoute
         ? `${best.length} mid-journey stops on your route`
         : `${best.length} trusted stops near you`) +
         (liveState.weather ? ` · ${liveState.weather.temp}°C · ${liveState.weather.desc}` : ' · open status by your local time')
     );
-  } catch {
-    setPlacesStatus('Live search unavailable right now · showing sample stops (tap Refresh to retry)');
-    renderDemoPlaces();
+    return;
+  } catch { /* fall through */ }
+
+  // Path 2: cached real stops
+  const cached = loadPlacesCache(cacheKeyA) || (cacheKeyMid ? loadPlacesCache(cacheKeyMid) : null);
+  if (cached && cached.length) {
+    const best = scorePlaces(cached, centerA, centerB, onRoute);
+    if (best.length) {
+      renderPlaces(best, { onRoute });
+      setPlacesStatus('Showing saved trusted stops (live map search is busy right now)');
+      return;
+    }
   }
+
+  // Path 3: small OpenStreetMap fetch near the anchor point
+  try {
+    let near = await queryOsmMap(centerA.lat, centerA.lon);
+    if (near.length) {
+      const seen = new Set();
+      near = near.filter((p) => {
+        const k = p.name.toLowerCase();
+        if (seen.has(k)) return false;
+        seen.add(k);
+        return true;
+      });
+      const best = scorePlaces(near, centerA, centerB, onRoute);
+      if (best.length) {
+        renderPlaces(best, { onRoute });
+        savePlacesCache(cacheKeyA, best);
+        setPlacesStatus(`${best.length} trusted stops near you (live data)`);
+        return;
+      }
+    }
+  } catch { /* fall through */ }
+
+  // Path 4: sample places with a clear message
+  setPlacesStatus('Live map search unavailable · showing sample stops (tap Refresh to retry)');
+  renderDemoPlaces();
 }
 
 function renderEmptyState(msg) {
@@ -587,7 +689,7 @@ const geoData = { pickup: null, destination: null };
 
 async function searchNominatim(q) {
   const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)}&addressdetails=1&limit=6&accept-language=en&countrycodes=in`;
-  const res = await fetch(url);
+  const res = await fetchWithTimeout(url, {}, 7000);
   if (!res.ok) throw new Error('geocode failed');
   return res.json();
 }
@@ -600,7 +702,7 @@ async function searchPlaces(q) {
   } catch { /* try backup */ }
   try {
     const url = `https://photon.komoot.io/api/?q=${encodeURIComponent(q)}&limit=5&lang=en`;
-    const res = await fetch(url);
+    const res = await fetchWithTimeout(url, {}, 7000);
     if (!res.ok) return [];
     const data = await res.json();
     const feats = data.features || [];
@@ -622,7 +724,7 @@ async function searchPlaces(q) {
 
 async function reverseGeocode(lat, lon) {
   const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}&accept-language=en&addressdetails=1`;
-  const res = await fetch(url);
+  const res = await fetchWithTimeout(url, {}, 7000);
   if (!res.ok) throw new Error('reverse geocode failed');
   const data = await res.json();
   if (typeof data.display_name !== 'string') throw new Error('bad address');
@@ -780,23 +882,39 @@ const planAnother = document.getElementById('planAnother');
 
 // Trusted contact
 const contactInputEl = document.getElementById('contactName');
+const contactPhoneEl = document.getElementById('contactPhone');
 const escalationCard = document.getElementById('escalationCard');
 const escalationMsg = document.getElementById('escalationMsg');
-const sendMsgBtn = document.getElementById('sendMsgBtn');
+const sendWhatsAppBtn = document.getElementById('sendWhatsAppBtn');
+const sendSmsBtn = document.getElementById('sendSmsBtn');
 const copyMsgBtn = document.getElementById('copyMsgBtn');
 const cancelEscalation = document.getElementById('cancelEscalation');
 
 let contact = localStorage.getItem('aura_contact') || '';
+let contactPhone = localStorage.getItem('aura_phone') || '';
 if (contact) contactInputEl.value = contact;
+if (contactPhone) contactPhoneEl.value = contactPhone;
 
 function saveContact() {
   const v = contactInputEl.value.trim();
   contact = v ? v.charAt(0).toUpperCase() + v.slice(1) : 'my trusted contact';
   if (v) localStorage.setItem('aura_contact', v);
+  contactPhone = contactPhoneEl.value.trim();
+  if (contactPhone) localStorage.setItem('aura_phone', contactPhone);
 }
 
 contactInputEl.addEventListener('input', saveContact);
 contactInputEl.addEventListener('change', saveContact);
+contactPhoneEl.addEventListener('input', saveContact);
+contactPhoneEl.addEventListener('change', saveContact);
+
+function normalizePhone(raw) {
+  const digits = String(raw || '').replace(/\D/g, '');
+  if (digits.length === 10) return '91' + digits;      // Indian number without prefix
+  if (digits.length === 11 && digits[0] === '0') return '91' + digits.slice(1);
+  if (digits.length >= 11 && digits.length <= 15) return digits;
+  return null;
+}
 
 setupAutocomplete(pickupInput, document.getElementById('pickupSuggestions'), 'pickup');
 setupAutocomplete(destInput, document.getElementById('destinationSuggestions'), 'destination');
@@ -891,7 +1009,7 @@ async function fetchRoute(lat1, lon1, lat2, lon2, needGeom = false) {
   for (const base of OSRM_SERVERS) {
     try {
       const url = `${base}/route/v1/driving/${lon1},${lat1};${lon2},${lat2}?overview=${overview}`;
-      const res = await fetch(url);
+      const res = await fetchWithTimeout(url, {}, 9000);
       if (!res.ok) {
         lastErr = new Error(`${base} -> ${res.status}`);
         continue;
@@ -1136,16 +1254,39 @@ function buildEscalation() {
   escalationMsg.innerHTML = currentMessage.replace(/\n/g, '<br>') +
     `<span class="msg-meta">Will be sent as SMS · WhatsApp to ${contact}</span>`;
   escalationCard.classList.remove('hidden');
-  sendMsgBtn.textContent = `Send to ${contact}`;
   notify(`You didn't check in. Escalation message ready for ${contact}.`, 'escalated');
 }
 
-sendMsgBtn.addEventListener('click', () => {
+function markEscalationSent(channel) {
   setCheckinStatus('sent');
-  sendMsgBtn.textContent = 'Message sent ✓';
-  sendMsgBtn.disabled = true;
-  notify(`Message sent to ${contact} via SMS & WhatsApp. AURA keeps watching until you respond.`, 'escalated');
-});
+  sendWhatsAppBtn.textContent = 'Sent via WhatsApp ✓';
+  sendSmsBtn.textContent = 'Sent via SMS ✓';
+  if (channel === 'wa') sendWhatsAppBtn.disabled = true;
+  if (channel === 'sms') sendSmsBtn.disabled = true;
+}
+
+function openEscalationChannel(kind) {
+  const phone = normalizePhone(contactPhone);
+  if (!phone) {
+    notify('Add your contact's number (with country code) in the Plan step first.', 'alert');
+    return;
+  }
+  saveContact();
+  const body = encodeURIComponent(currentMessage);
+  let url;
+  if (kind === 'wa') {
+    url = `https://wa.me/${phone}?text=${body}`;
+  } else {
+    const sep = /iPad|iPhone|iPod/.test(navigator.userAgent) ? '&' : '?';
+    url = `sms:${phone}${sep}body=${body}`;
+  }
+  window.open(url, '_blank');
+  markEscalationSent(kind);
+  notify(`${kind === 'wa' ? 'WhatsApp' : 'SMS'} opening for ${contact} — AURA keeps watching until you respond.`, 'escalated');
+}
+
+sendWhatsAppBtn.addEventListener('click', () => openEscalationChannel('wa'));
+sendSmsBtn.addEventListener('click', () => openEscalationChannel('sms'));
 
 copyMsgBtn.addEventListener('click', async () => {
   const text = escalationMsg.textContent.replace(/Will be sent as SMS · WhatsApp to .*/s, '').trim();
