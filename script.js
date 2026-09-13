@@ -501,9 +501,22 @@ async function loadTrustedPlaces() {
     }
   }
 
-  // Path 3: small OpenStreetMap fetch near the anchor point
+  // Path 3: small OpenStreetMap fetch — sample boxes at start, middle and end of the journey
   try {
-    let near = await queryOsmMap(centerA.lat, centerA.lon);
+    const anchors = onRoute
+      ? [
+          centerA,
+          { lat: (centerA.lat + centerB.lat) / 2, lon: (centerA.lon + centerB.lon) / 2 },
+          centerB,
+        ]
+      : [centerA];
+    let near = [];
+    for (const a of anchors) {
+      if (near.length >= 12) break;
+      try {
+        near = near.concat(await queryOsmMap(a.lat, a.lon));
+      } catch { /* try next anchor */ }
+    }
     if (near.length) {
       const seen = new Set();
       near = near.filter((p) => {
@@ -516,7 +529,7 @@ async function loadTrustedPlaces() {
       if (best.length) {
         renderPlaces(best, { onRoute });
         savePlacesCache(cacheKeyA, best);
-        setPlacesStatus(`${best.length} trusted stops near you (live data)`);
+        setPlacesStatus(`${best.length} trusted stops ${onRoute ? 'along your route' : 'near you'} (live data)`);
         return;
       }
     }
@@ -1268,7 +1281,7 @@ function markEscalationSent(channel) {
 function openEscalationChannel(kind) {
   const phone = normalizePhone(contactPhone);
   if (!phone) {
-    notify('Add your contact's number (with country code) in the Plan step first.', 'alert');
+    notify("Add your contact's number (with country code) in the Plan step first.", 'alert');
     return;
   }
   saveContact();
