@@ -1028,6 +1028,28 @@ input::placeholder {
   margin-top: 2px;
 }
 
+.route-badge.conf {
+  background: var(--accent-dim);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.route-option.selected .route-badge.conf {
+  background: var(--accent);
+  color: #fff;
+}
+
+.route-reason {
+  flex-basis: 100%;
+  margin: 4px 0 0;
+  font-size: 0.78rem;
+  line-height: 1.45;
+  color: var(--text-dim);
+  padding: 8px 10px;
+  background: var(--bg-soft);
+  border-radius: var(--radius-sm);
+}
+
 .route-time {
   font-weight: 700;
   font-size: 1.1rem;

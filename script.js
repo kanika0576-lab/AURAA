@@ -312,7 +312,8 @@ const OVERPASS_SERVERS = [
   'https://maps.mail.ru/osm/tools/overpass/api/interpreter',
 ];
 
-// Small-area fallback that uses the plain OpenStreetMap API when Overpass is blocked
+// Small-area fallback that uses the plain OpenStreetMap API when Overpass is blocked.
+// Reads BOTH tagged nodes and ways (India maps POIs mostly as ways/polygons).
 async function queryOsmMap(lat, lon) {
   const d = 0.012;
   const bx = `${(lon - d).toFixed(4)},${(lat - d).toFixed(4)},${(lon + d).toFixed(4)},${(lat + d).toFixed(4)}`;
@@ -321,20 +322,55 @@ async function queryOsmMap(lat, lon) {
   const xml = await res.text();
   const allowed = new Set(['cafe', 'restaurant', 'fast_food', 'ice_cream', 'library', 'pharmacy', 'bank', 'police', 'doctors', 'hospital', 'shelter']);
   const shops = new Set(['convenience', 'supermarket']);
-  const places = [];
-  const nodeRe = /<node id="\d+" lat="([-.\d]+)" lon="([-.\d]+)">([\s\S]*?)<\/node>/g;
+
+  // 1) coordinates of every node (self-closing and open forms) — lat/lon come AFTER other attrs, never adjacent to id
+  const nodes = new Map();
+  const allNodes = /<node id="(\d+)"[^>]*?lat="([-.\d]+)" lon="([-.\d]+)"[^>]*\/?>/g;
   let m;
-  while ((m = nodeRe.exec(xml)) !== null) {
-    const la = parseFloat(m[1]), lo = parseFloat(m[2]);
+  while ((m = allNodes.exec(xml)) !== null) nodes.set(m[1], { lat: parseFloat(m[2]), lon: parseFloat(m[3]) });
+
+  const places = [];
+  const pushPOI = (tags, lat2, lon2) => {
+    if (lat2 === undefined || lon2 === undefined) return;
+    if (!tags.name) return;
+    if (!allowed.has(tags.amenity) && !shops.has(tags.shop)) return;
+    places.push({ name: tags.name, icon: placeIcon(tags), tags, lat: lat2, lon: lon2 });
+  };
+  const readTags = (body) => {
     const tags = {};
-    const tagRe = /<tag k="([^"]+)" v="([^"]*)"/g;
+    const tRe = /<tag k="([^"]+)" v="([^"]*)"/g;
     let tm;
-    while ((tm = tagRe.exec(m[3])) !== null) tags[tm[1]] = tm[2];
+    while ((tm = tRe.exec(body)) !== null) tags[tm[1]] = tm[2];
+    return tags;
+  };
+
+  // 2) tagged nodes (open form with children)
+  const nodeTyped = /<node id="\d+"[^>]*?lat="([-.\d]+)" lon="([-.\d]+)"[^>]*>([\s\S]*?)<\/node>/g;
+  while ((m = nodeTyped.exec(xml)) !== null) pushPOI(readTags(m[3]), parseFloat(m[1]), parseFloat(m[2]));
+
+  // 3) ways (polygon POIs) using node-ref centroid as the location
+  const wayRe = /<way id="\d+"[^>]*>([\s\S]*?)<\/way>/g;
+  while ((m = wayRe.exec(xml)) !== null) {
+    const tags = readTags(m[1]);
     if (!tags.name) continue;
     if (!allowed.has(tags.amenity) && !shops.has(tags.shop)) continue;
-    places.push({ name: tags.name, icon: placeIcon(tags), tags, lat: la, lon: lo });
+    const refs = /<nd ref="(\d+)"[^>]*\/?>/g;
+    let rm, sx = 0, sy = 0, n = 0;
+    while ((rm = refs.exec(m[1])) !== null) {
+      const p = nodes.get(rm[1]);
+      if (p) { sx += p.lat; sy += p.lon; n++; }
+    }
+    if (n) pushPOI(tags, sx / n, sy / n);
   }
-  return places;
+
+  // 4) dedupe POIs with the same name
+  const seen = new Set();
+  return places.filter((p) => {
+    const k = p.name.toLowerCase();
+    if (seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  });
 }
 
 // localStorage cache: keep real trusted stops so Saved Places never dies with the map servers (30 min TTL)
@@ -421,6 +457,7 @@ function scorePlaces(places, centerA, centerB, onRoute) {
       const mt = distToRoute(p.lat, p.lon, routeGeom);
       p.offKm = mt.off;    // how far off the road line the stop is
       p.alongKm = mt.along; // distance along the route from the start
+      p.distKm = mt.along;  // used for card distance display
     } else {
       const s = distToSegment(centerA.lat, centerA.lon, centerB.lat, centerB.lon, p.lat, p.lon);
       p.offKm = s.d;
@@ -673,25 +710,28 @@ const routes = [
     id: 'fast',
     name: 'Fast',
     badge: 'Fastest',
-    desc: 'Metro + walk · Less active after 8 PM',
+    desc: 'Fastest route',
     time: 24,
     confidence: 82,
+    reason: 'Shortest drive minutes on measured roads — least exposure time.',
   },
   {
     id: 'balanced',
     name: 'Balanced',
     badge: 'Recommended',
-    desc: 'Bus + main road · Best fit for tonight',
+    desc: 'Time + well-lit roads',
     time: 31,
     confidence: 91,
+    reason: 'Main highways with lighting; shops and cafes along the way for stops.',
   },
   {
     id: 'resilient',
     name: 'Resilient',
     badge: 'Most recovery',
-    desc: 'More backup stops · Recovery options',
+    desc: 'Most backups along the route',
     time: 36,
     confidence: 88,
+    reason: 'Extra hospitals, pharmacies and transit stops near every section.',
   },
 ];
 
@@ -1114,9 +1154,9 @@ planBtn.addEventListener('click', async () => {
     state.distanceKm = Math.round(km * 10) / 10;
   } else {
     routes[0].time = 24; routes[1].time = 31; routes[2].time = 36;
-    routes[0].desc = 'Metro + walk · Less active after 8 PM';
-    routes[1].desc = 'Bus + main road · Best fit for tonight';
-    routes[2].desc = 'More backup stops · Recovery options';
+    routes[0].desc = 'Fastest route';
+    routes[1].desc = 'Time + well-lit roads';
+    routes[2].desc = 'Most backups along route';
     state.distanceKm = null;
     if (!geoData.pickup) notify(`Pickup "${pickup}" was not found on the map. Choose from the suggestions.`, 'alert');
     if (!geoData.destination) notify(`Destination "${dest}" was not found on the map. Choose from the suggestions.`, 'alert');
@@ -1150,12 +1190,14 @@ function buildRouteOptions() {
         : '';
     div.innerHTML = `
       <span class="route-badge">${route.badge}</span>
+      <span class="route-badge conf">${route.confidence}% confidence</span>
       ${rainTag}
       <div class="route-info">
         <div class="route-name">${route.name}</div>
         <div class="route-desc">${route.desc}</div>
       </div>
       <span class="route-time">${route.time} min</span>
+      <p class="route-reason">${route.reason}</p>
     `;
     div.addEventListener('click', () => selectRoute(route, div));
     routeOptions.appendChild(div);
