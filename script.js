@@ -872,7 +872,7 @@ const geoData = { pickup: null, destination: null };
 const geoLabel = {};
 
 async function searchNominatim(q) {
-  const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)}&addressdetails=1&limit=12&accept-language=en&countrycodes=in`;
+  const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)}&addressdetails=1&limit=20&accept-language=en&countrycodes=in`;
   const res = await fetchWithTimeout(url, {}, 7000);
   if (!res.ok) throw new Error('geocode failed');
   return res.json();
@@ -886,7 +886,7 @@ async function searchPlaces(q) {
     if (results.length) return results;
   } catch { /* try backup */ }
   try {
-    const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)}&addressdetails=1&limit=12&accept-language=en`;
+    const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)}&addressdetails=1&limit=20&accept-language=en`;
     const res = await fetchWithTimeout(url, {}, 7000);
     if (!res.ok) throw new Error('nominate no-country failed');
     const results = await res.json();
@@ -1004,7 +1004,7 @@ function renderSuggestions(listEl, results, input, key) {
     setSugOpen(listEl, true);
     return;
   }
-  results.slice(0, 10).forEach((place) => {
+  results.slice(0, 15).forEach((place) => {
     const div = document.createElement('div');
     div.className = 'suggestion-item';
     div.innerHTML = `<strong>${escapeHtml(shortName(place))}</strong><small>${escapeHtml(place.display_name)}</small>`;
