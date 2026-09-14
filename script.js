@@ -312,30 +312,14 @@ const OVERPASS_SERVERS = [
   'https://maps.mail.ru/osm/tools/overpass/api/interpreter',
 ];
 
-// Small-area fallback that uses the plain OpenStreetMap API when Overpass is blocked.
-// Reads BOTH tagged nodes and ways (India maps POIs mostly as ways/polygons).
-async function queryOsmMap(lat, lon) {
-  const d = 0.012;
-  const bx = `${(lon - d).toFixed(4)},${(lat - d).toFixed(4)},${(lon + d).toFixed(4)},${(lat + d).toFixed(4)}`;
-  const res = await fetchWithTimeout(`https://api.openstreetmap.org/api/0.6/map?bbox=${bx}`, {}, 12000);
-  if (!res.ok) throw new Error(`osmapi ${res.status}`);
-  const xml = await res.text();
-  const allowed = new Set(['cafe', 'restaurant', 'fast_food', 'ice_cream', 'library', 'pharmacy', 'bank', 'police', 'doctors', 'hospital', 'shelter']);
-  const shops = new Set(['convenience', 'supermarket']);
-
-  // 1) coordinates of every node (self-closing and open forms) — lat/lon come AFTER other attrs, never adjacent to id
+// Shared parser for OSM map XML → POI list (nodes + ways/polygons)
+// Parses tagged nodes, open nodes, and way centroids in one pass.
+function parseOsmPoi(xml, allowed, shops) {
   const nodes = new Map();
   const allNodes = /<node id="(\d+)"[^>]*?lat="([-.\d]+)" lon="([-.\d]+)"[^>]*\/?>/g;
   let m;
   while ((m = allNodes.exec(xml)) !== null) nodes.set(m[1], { lat: parseFloat(m[2]), lon: parseFloat(m[3]) });
-
   const places = [];
-  const pushPOI = (tags, lat2, lon2) => {
-    if (lat2 === undefined || lon2 === undefined) return;
-    if (!tags.name) return;
-    if (!allowed.has(tags.amenity) && !shops.has(tags.shop)) return;
-    places.push({ name: tags.name, icon: placeIcon(tags), tags, lat: lat2, lon: lon2 });
-  };
   const readTags = (body) => {
     const tags = {};
     const tRe = /<tag k="([^"]+)" v="([^"]*)"/g;
@@ -343,17 +327,18 @@ async function queryOsmMap(lat, lon) {
     while ((tm = tRe.exec(body)) !== null) tags[tm[1]] = tm[2];
     return tags;
   };
-
-  // 2) tagged nodes (open form with children)
+  const pushPOI = (tags, lat, lon) => {
+    if (lat === undefined || lon === undefined) return;
+    if (!tags.name) return;
+    if (!allowed.has(tags.amenity) && !shops.has(tags.shop)) return;
+    places.push({ name: tags.name, icon: placeIcon(tags), tags, lat, lon });
+  };
   const nodeTyped = /<node id="\d+"[^>]*?lat="([-.\d]+)" lon="([-.\d]+)"[^>]*>([\s\S]*?)<\/node>/g;
   while ((m = nodeTyped.exec(xml)) !== null) pushPOI(readTags(m[3]), parseFloat(m[1]), parseFloat(m[2]));
-
-  // 3) ways (polygon POIs) using node-ref centroid as the location
   const wayRe = /<way id="\d+"[^>]*>([\s\S]*?)<\/way>/g;
   while ((m = wayRe.exec(xml)) !== null) {
     const tags = readTags(m[1]);
-    if (!tags.name) continue;
-    if (!allowed.has(tags.amenity) && !shops.has(tags.shop)) continue;
+    if (!tags.name || (!allowed.has(tags.amenity) && !shops.has(tags.shop))) continue;
     const refs = /<nd ref="(\d+)"[^>]*\/?>/g;
     let rm, sx = 0, sy = 0, n = 0;
     while ((rm = refs.exec(m[1])) !== null) {
@@ -362,8 +347,6 @@ async function queryOsmMap(lat, lon) {
     }
     if (n) pushPOI(tags, sx / n, sy / n);
   }
-
-  // 4) dedupe POIs with the same name
   const seen = new Set();
   return places.filter((p) => {
     const k = p.name.toLowerCase();
@@ -372,6 +355,19 @@ async function queryOsmMap(lat, lon) {
     return true;
   });
 }
+
+// Small-area fallback that uses the plain OpenStreetMap API when Overpass is blocked.
+// Reads BOTH tagged nodes and ways (India maps POIs mostly as ways/polygons).
+async function queryOsmMap(lat, lon) {
+  const d = 0.012;
+  const bx = `${(lon - d).toFixed(4)},${(lat - d).toFixed(4)},${(lon + d).toFixed(4)},${(lat + d).toFixed(4)}`;
+  const res = await fetchWithTimeout(`https://api.openstreetmap.org/api/0.6/map?bbox=${bx}`, {}, 12000);
+  if (!res.ok) throw new Error(`osmapi ${res.status}`);
+  return parseOsmPoi(await res.text(), TRUSTED_ALLOWED, TRUSTED_SHOPS);
+}
+
+const TRUSTED_ALLOWED = new Set(['cafe', 'restaurant', 'fast_food', 'ice_cream', 'library', 'pharmacy', 'bank', 'police', 'doctors', 'hospital', 'shelter']);
+const TRUSTED_SHOPS = new Set(['convenience', 'supermarket']);
 
 // localStorage cache: keep real trusted stops so Saved Places never dies with the map servers (30 min TTL)
 function placesCacheKey(lat, lon) {
@@ -523,7 +519,11 @@ async function loadTransitNear(lat, lon, label) {
       const it = document.createElement('div');
       it.className = 'transit-item';
       const km = s.distKm < 1 ? `${Math.round(s.distKm * 1000)} m` : `${s.distKm.toFixed(1)} km`;
-      it.innerHTML = `<span class="transit-icon">${s.icon}</span><div><div class="transit-name">${escapeHtml(s.name)}</div><div class="transit-detail">${s.kind} · ${km} from destination</div></div>`;
+      it.innerHTML = `<span class="transit-icon">${s.icon}</span><div><div class="transit-name">${escapeHtml(s.name)}</div><div class="transit-detail">${s.kind} · ${km} from destination</div><button class="btn btn-ghost-sm transit-dir">Directions →</button></div>`;
+      it.querySelector('.transit-dir').addEventListener('click', (e) => {
+        e.stopPropagation();
+        openDirections(lat, lon, s.lat, s.lon, s.name);
+      });
       listEl.appendChild(it);
     });
     statusEl.textContent = `${Math.min(6, stops.length)} station${stops.length > 1 ? 's' : ''} near ${label || 'your destination'} — switch modes safely.`;
@@ -603,8 +603,9 @@ function scorePlaces(places, centerA, centerB, onRoute) {
     }
   });
   // Keep stops close to the route line; never show a far-off corner as "on your route"
-  const onPath = places.filter((p) => p.offKm <= 3);
-  if (onPath.length >= 3) places = onPath;
+  let onPath = places.filter((p) => p.offKm <= 2.2);
+  if (onPath.length < 4) onPath = places.filter((p) => p.offKm <= 3.5);
+  places = onPath.length ? onPath : places;
   places.sort((a, b) => a.alongKm - b.alongKm);
   return places.slice(0, 8);
 }
@@ -766,28 +767,20 @@ function renderPlaces(list, opts) {
     card.querySelector('.btn-ghost-sm').addEventListener('click', async () => {
       const btn = card.querySelector('.btn-ghost-sm');
       btn.disabled = true;
-      btn.textContent = 'Computing…';
+      btn.textContent = 'Opening…';
       const anchor = geoData.pickup || liveState.userLoc;
-      let msg = '';
       if (anchor && !place._demo) {
         try {
           const r = await fetchRoute(anchor.lat, anchor.lon, place.lat, place.lon);
           if (r) {
             const min = Math.max(2, Math.round(r.duration / 60));
-            msg = `Head to ${place.name}: ${min} min by the fastest route (${(r.distance / 1000).toFixed(1)} km). Check-In stays active.`;
-          } else {
-            throw new Error('empty');
+            notify(`Head to ${place.name}: ${min} min by the fastest route (${(r.distance / 1000).toFixed(1)} km). Check-In stays active.`);
           }
-        } catch {
-          const est = Math.max(2, Math.round(place.distKm / 26 * 60));
-          msg = `Head to ${place.name}: ~${est} min. Check-In stays active.`;
-        }
-      } else {
-        msg = `Head to ${place.name} (${dist}). Check-In stays active.`;
+        } catch { /* open navigation regardless */ }
       }
-      notify(msg);
       btn.textContent = 'Directions →';
       btn.disabled = false;
+      openDirections(anchor && anchor.lat, anchor && anchor.lon, place.lat, place.lon, place.name);
     });
     liveState.placesGrid.appendChild(card);
   });
@@ -990,13 +983,14 @@ function shortName(place) {
 }
 
 function renderSuggestions(listEl, results, input, key) {
+  sugNav.idx = -1;
   listEl.innerHTML = '';
   if (!results.length) {
-    listEl.innerHTML = '<div class="suggestion-empty">No places found. Try another spelling.</div>';
+    listEl.innerHTML = '<div class="suggestion-empty">No places found. Try another spelling, or the area + city.</div>';
     listEl.classList.add('open');
     return;
   }
-  results.slice(0, 6).forEach((place) => {
+  results.slice(0, 8).forEach((place) => {
     const div = document.createElement('div');
     div.className = 'suggestion-item';
     div.innerHTML = `<strong>${escapeHtml(shortName(place))}</strong><small>${escapeHtml(place.display_name)}</small>`;
@@ -1009,6 +1003,12 @@ function renderSuggestions(listEl, results, input, key) {
     listEl.appendChild(div);
   });
   listEl.classList.add('open');
+}
+
+let sugNav = { idx: -1 };
+function applySugNav(listEl) {
+  const items = listEl.querySelectorAll('.suggestion-item');
+  items.forEach((el, i) => el.classList.toggle('active', i === sugNav.idx));
 }
 
 function setupAutocomplete(input, listEl, key) {
@@ -1038,10 +1038,31 @@ function setupAutocomplete(input, listEl, key) {
     }, 350);
   });
   input.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') listEl.classList.remove('open');
+    if (e.key === 'Escape') { listEl.classList.remove('open'); return; }
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      const items = listEl.querySelectorAll('.suggestion-item');
+      if (!items.length) return;
+      e.preventDefault();
+      if (e.key === 'ArrowDown') sugNav.idx = Math.min(items.length - 1, sugNav.idx + 1);
+      else sugNav.idx = Math.max(0, sugNav.idx - 1);
+      applySugNav(listEl);
+      const act = items[sugNav.idx];
+      if (act) {
+        const strong = act.querySelector('strong');
+        if (strong) input.value = strong.textContent;
+      }
+      return;
+    }
+    if (e.key === 'Enter') {
+      const items = listEl.querySelectorAll('.suggestion-item');
+      if (sugNav.idx >= 0 && items[sugNav.idx]) {
+        e.preventDefault();
+        items[sugNav.idx].click();
+      }
+    }
   });
   input.addEventListener('blur', () => {
-    setTimeout(() => listEl.classList.remove('open'), 150);
+    setTimeout(() => listEl.classList.remove('open'), 250);
   });
 }
 
@@ -1379,11 +1400,34 @@ startBtn.addEventListener('click', () => {
   confidenceVal.textContent = `${state.route.confidence}% High`;
 
   setCheckinStatus('armed');
-  startTimer();
-  notify(`Journey started. Check-In armed for ${state.pickup} → ${state.destination}.`);
+  state.movingStarted = false;
+  state.movedDist = 0;
+  state.lastPosForMove = null;
+  state.waitForMove = true;
+  state.timerStarted = false;
+  clearInterval(state.timerInterval);
+  timerValue.textContent = formatTime(state.route.time * 60 + bufferSec);
+  setTrackStatus('Stand by — the journey timer starts as soon as you start moving…');
+  notify(`Journey marked active. Timer starts when you move (live navigation style). Check-In armed for ${state.pickup} → ${state.destination}.`);
   loadTrustedPlaces();
   initLiveMap();
+  clearTimeout(state.moveFallback);
+  state.moveFallback = setTimeout(() => {
+    if (!state.waitForMove) return;
+    state.waitForMove = false;
+    notify('No movement detected yet. Timer started anyway so your contact stays protected.', 'alert');
+    startJourneyTimer(true);
+  }, 8 * 60 * 1000);
 });
+
+function startJourneyTimer(forced) {
+  if (state.timerStarted) return;
+  state.timerStarted = true;
+  state.waitForMove = false;
+  startTimer();
+  if (forced) return;
+  notify('Movement detected — taking your live route. Check-In timer running.');
+}
 
 function startTimer() {
   clearInterval(state.timerInterval);
@@ -1676,6 +1720,18 @@ function onTrackPos(pos) {
   const lat = pos.coords.latitude;
   const lon = pos.coords.longitude;
   lastKnownPos = { lat, lon };
+  if (state.waitForMove && state.route) {
+    if (!state.lastPosForMove) {
+      state.lastPosForMove = { lat, lon };
+    } else {
+      const seg = haversine(state.lastPosForMove.lat, state.lastPosForMove.lon, lat, lon);
+      if (seg > 0.005) {
+        state.movedDist += seg;
+        state.lastPosForMove = { lat, lon };
+        if (state.movedDist >= 0.2) startJourneyTimer(false);
+      }
+    }
+  }
   if (userMarker) userMarker.setLatLng([lat, lon]);
   if (mapFollow && journeyMap) journeyMap.setView([lat, lon], Math.max(journeyMap.getZoom(), 13));
   checkOffRoute();
@@ -1684,7 +1740,7 @@ function onTrackPos(pos) {
 function checkOffRoute() {
   if (!lastKnownPos) return;
   if (!routeGeom || routeGeom.length < 2) {
-    setTrackStatus('Route line unavailable — locating you…');
+    setTrackStatus(state.waitForMove ? 'Stand by — timer starts on first movement. Locating route…' : 'Route line unavailable — locating you…');
     return;
   }
   const mt = distToRoute(lastKnownPos.lat, lastKnownPos.lon, routeGeom);
@@ -1692,17 +1748,148 @@ function checkOffRoute() {
   const fmtM = (m) => (m >= 1000 ? (m / 1000).toFixed(1) + ' km' : Math.round(m) + ' m');
   if (offM > 1600) {
     setTrackStatus(`${fmtM(offM)} off the planned route`, 'off');
-    offRouteBanner.classList.remove('hidden');
-    offRouteDetail.textContent = `You're about ${fmtM(offM)} away from the route line. Check-In stays active and trusted stops near this spot are listed in Saved Places.`;
     if (!offRouteActive) {
       offRouteActive = true;
-      notify('Heads-up: you might be going off the planned AURA route. AURA keeps monitoring you.', 'alert');
+      offRouteBanner.classList.remove('hidden');
+      offRouteDetail.innerHTML = `You're about ${fmtM(offM)} away from the route line. AURA is now checking a safer re-route from your live position…`;
+      notify('You might be going off the planned route. AURA is re-routing with a live safety check…', 'alert');
+      rerouteFromCurrent();
+    } else if (!state.reroutingActive) {
+      offRouteDetail.innerHTML = `You're about ${fmtM(offM)} away from the route line. A safer re-route was already applied — Check-In stays active.`;
     }
   } else {
-    setTrackStatus(`You're on the route · ${fmtM(offM)} from the line`);
+    setTrackStatus(state.waitForMove ? `On route · ${fmtM(offM)} from the line · timer starts on movement` : `You're on the route · ${fmtM(offM)} from the line`);
     offRouteBanner.classList.add('hidden');
     offRouteActive = false;
   }
+}
+
+async function rerouteFromCurrent() {
+  if (!lastKnownPos || !geoData.destination || state.reroutingActive) return;
+  state.reroutingActive = true;
+  try {
+    const r = await fetchRoute(lastKnownPos.lat, lastKnownPos.lon, geoData.destination.lat, geoData.destination.lon, true);
+    if (!(r && r.geometry && r.geometry.length > 1)) return;
+    const newKm = r.distance / 1000;
+    const newMin = Math.max(3, Math.round((r.duration / 60) * trafficFactor(newKm)));
+    const ctx = await detectAreaContext(lastKnownPos.lat, lastKnownPos.lon);
+    const safety = buildSafetyNote(ctx);
+    routeGeom = r.geometry;
+    routeDistKm = newKm;
+    if (journeyMap) {
+      if (routeLine) journeyMap.removeLayer(routeLine);
+      routeLine = L.polyline(routeGeom, { color: '#0ea5e9', weight: 5, opacity: 0.9, dashArray: '6 6' }).addTo(journeyMap);
+      journeyMap.fitBounds(routeLine.getBounds(), { padding: [36, 36] });
+    }
+    distEta.innerHTML = `${newKm.toFixed(1)} km left · ETA <strong>${newMin} min</strong>`;
+    if (state.timerStarted) {
+      state.timer = Math.max(state.timer, Math.round(newMin * 60 * 1.6));
+      startTimer();
+    }
+    offRouteDetail.innerHTML = `New safer route from your position: <strong>${newKm.toFixed(1)} km · ~${newMin} min</strong>. ${safety}`;
+    notify(`Re-routed from your live position (${newKm.toFixed(1)} km, ~${newMin} min). ${safety}`, 'ok');
+  } catch {
+    offRouteDetail.innerHTML = `About ${fmtKm(distToRoute(lastKnownPos.lat, lastKnownPos.lon, routeGeom).off * 1000)} off the line. Live re-route failed — stay on main roads and keep Check-In active.`;
+  } finally {
+    state.reroutingActive = false;
+  }
+}
+
+const fmtKm = (m) => (m >= 1000 ? (m / 1000).toFixed(1) + ' km' : Math.round(m) + ' m');
+
+// ---- Area safety scan (street lamps, police, hospital) from live map data ----
+async function detectAreaContext(lat, lon) {
+  const d = 0.012;
+  const bbox = `${(lon - d).toFixed(4)},${(lat - d).toFixed(4)},${(lon + d).toFixed(4)},${(lat + d).toFixed(4)}`;
+  let lamps = 0;
+  const police = [];
+  const hospitals = [];
+  try {
+    const res = await fetchWithTimeout(`https://api.openstreetmap.org/api/0.6/map?bbox=${bbox}`, {}, 12000);
+    if (res.ok) {
+      const xml = await res.text();
+      lamps = (xml.match(/<tag k="highway" v="street_lamp"\/>/g) || []).length;
+      const nodes = new Map();
+      const nodeRe = /<node id="(\d+)"[^>]*?lat="([-.\d]+)" lon="([-.\d]+)"[^>]*\/?>/g;
+      let m;
+      while ((m = nodeRe.exec(xml)) !== null) {
+        nodes.set(m[1], { lat: parseFloat(m[2]), lon: parseFloat(m[3]) });
+      }
+      const typed = /<node id="\d+"[^>]*?lat="([-.\d]+)" lon="([-.\d]+)"[^>]*>([\s\S]*?)<\/node>/g;
+      while ((m = typed.exec(xml)) !== null) {
+        const tg = {};
+        const tRe = /<tag k="([^"]+)" v="([^"]*)"/g;
+        let tm;
+        while ((tm = tRe.exec(m[3])) !== null) tg[tm[1]] = tm[2];
+        if (tg.amenity === 'police') police.push({ lat: parseFloat(m[1]), lon: parseFloat(m[2]), name: tg.name || 'Police post' });
+        if (tg.amenity === 'hospital' && tg.name) hospitals.push({ lat: parseFloat(m[1]), lon: parseFloat(m[2]), name: tg.name });
+      }
+      const wayRe = /<way id="\d+"[^>]*>([\s\S]*?)<\/way>/g;
+      while ((m = wayRe.exec(xml)) !== null) {
+        const tg = {};
+        const tRe = /<tag k="([^"]+)" v="([^"]*)"/g;
+        let tm;
+        while ((tm = tRe.exec(m[1])) !== null) tg[tm[1]] = tm[2];
+        if (tg.amenity !== 'police' && tg.amenity !== 'hospital') continue;
+        const refs = /<nd ref="(\d+)"[^>]*\/?>/g;
+        let rm, sx = 0, sy = 0, n = 0;
+        while ((rm = refs.exec(m[1])) !== null) {
+          const p = nodes.get(rm[1]);
+          if (p) { sx += p.lat; sy += p.lon; n++; }
+        }
+        if (!n) continue;
+        const pc = { lat: sx / n, lon: sy / n, name: tg.name || (tg.amenity === 'police' ? 'Police post' : 'Hospital') };
+        if (tg.amenity === 'police') police.push(pc);
+        else if (tg.name) hospitals.push(pc);
+      }
+    }
+  } catch { /* zeroes are fine */ }
+  const best = (arr) => {
+    let b = null;
+    arr.forEach((p) => {
+      const km = haversine(lat, lon, p.lat, p.lon);
+      if (!b || km < b.km) b = { name: p.name, lat: p.lat, lon: p.lon, km };
+    });
+    return b;
+  };
+  return { lamps, police: best(police), hospital: best(hospitals) };
+}
+
+function buildSafetyNote(ctx) {
+  const parts = [];
+  if (ctx.police && ctx.police.km <= 2.5) {
+    const pd = ctx.police.km < 1 ? `${Math.round(ctx.police.km * 1000)} m` : `${ctx.police.km.toFixed(1)} km`;
+    parts.push(`police post ~${pd} away`);
+  } else parts.push('no police post within ~2.5 km');
+  if (ctx.hospital) {
+    const hd = ctx.hospital.km < 1 ? `${Math.round(ctx.hospital.km * 1000)} m` : `${ctx.hospital.km.toFixed(1)} km`;
+    parts.push(`nearest hospital ~${hd} (${ctx.hospital.name})`);
+  } else parts.push('no mapped hospital here');
+  if (ctx.lamps === 0) parts.push('no street lamps mapped here — poorly lit at night');
+  else if (ctx.lamps < 4) parts.push(`street lamps sparse in this area (${ctx.lamps} mapped)`);
+  else parts.push(`street lights present (${ctx.lamps} mapped)`);
+  return `Area check: ${parts.join(' · ')}. AURA can't confirm dogs or crime from map data — if it feels unsafe, stay on busy roads and keep your trusted contact on speed dial.`;
+}
+
+function openDirections(oLat, oLon, dLat, dLon, name) {
+  const query = oLat !== undefined && oLon !== undefined ? `origin=${oLat},${oLon}&` : '';
+  window.open(`https://www.google.com/maps/dir/?api=1&${query}destination=${dLat},${dLon}&travelmode=driving`, '_blank');
+  notify(`Opening live navigation to ${name} in Google Maps.`);
+}
+
+async function queryNearbySafe(lat, lon) {
+  let places = [];
+  try { places = await queryTrustedPlaces(lat, lon, lat, lon); } catch { places = []; }
+  if (!places.length) {
+    const d = 0.012;
+    const bbox = `${(lon - d).toFixed(4)},${(lat - d).toFixed(4)},${(lon + d).toFixed(4)},${(lat + d).toFixed(4)}`;
+    const res = await fetchWithTimeout(`https://api.openstreetmap.org/api/0.6/map?bbox=${bbox}`, {}, 12000);
+    if (!res.ok) throw new Error(`osmapi ${res.status}`);
+    places = parseOsmPoi(await res.text(), TRUSTED_ALLOWED, TRUSTED_SHOPS);
+  }
+  places.forEach((p) => { p.distKm = haversine(lat, lon, p.lat, p.lon); });
+  places.sort((a, b) => a.distKm - b.distKm);
+  return places.slice(0, 5);
 }
 
 function stopTracking() {
@@ -1724,28 +1911,107 @@ function destroyLiveMap() {
 }
 
 // ===== SITUATION ASSISTANT =====
+function answerAssist(raw) {
+  const el = document.getElementById('assistAnswer');
+  if (!el) return;
+  const q = (raw || '').toLowerCase();
+  el.classList.remove('hidden');
+  el.innerHTML = 'Checking your live context…';
+  const pos = lastKnownPos || liveState.userLoc;
+  let ans;
+  if (q.includes('dog') || q.includes('kutta') || q.includes('stray')) {
+    const spotTip = pos ? areaAdvice(pos, 'stray') : 'Head to a busy, well-lit spot nearby and keep your trusted contact on the line.';
+    ans = `<strong>Stray dogs:</strong> AURA cannot detect dogs from map data in real time — honest answer. ${spotTip} Don't run; keep moving calmly; a well-lit shop or cafe is the safest place to wait.`;
+  } else if (q.includes('follow') || q.includes('stalk') || q.includes('peecha') || q.includes('saath') || q.includes('pichhe') || q.includes('someone')) {
+    const loc = pos ? `Your live position: <a href="https://www.google.com/maps?q=${pos.lat},${pos.lon}" target="_blank">${pos.lat.toFixed(5)}, ${pos.lon.toFixed(5)}</a>` : 'Location not shared.';
+    ans = `<strong>You feel followed:</strong> keep AURA running and head to the nearest busy spot (cafe, pharmacy, police post). ${loc} Share now: <a href="https://wa.me/${normalizePhone(document.getElementById('contactPhone').value)}?text=${encodeURIComponent('AURA alert: ' + userName + ' feels followed. ' + (pos ? 'Position: https://www.google.com/maps?q=' + pos.lat + ',' + pos.lon : 'Location not shared.'))}" target="_blank">Send WhatsApp alert to ${escapeHtml(contact)}</a>. If you need to call someone, do it now.`;
+  } else if (q.includes('dark') || q.includes('light') || q.includes('andhera') || q.includes('street light')) {
+    ans = pos ? `<strong>Lighting check:</strong> ${areaAdvice(pos, 'dark')}` : 'Enable GPS for live lighting and safety data in this area.';
+  } else if (q.includes('unwell') || q.includes('fever') || q.includes('dizzy') || q.includes('pain') || q.includes('bimar') || q.includes('sick')) {
+    ans = pos ? `<strong>Medical:</strong> ${areaAdvice(pos, 'medical')}` : 'Enable GPS to find the nearest hospital or pharmacy.';
+  } else if (q.includes('lost') || q.includes('raasta') || q.includes('gum') || q.includes('direction')) {
+    ans = pos ? `<strong>You're at:</strong> <a href="https://www.google.com/maps?q=${pos.lat},${pos.lon}" target="_blank">${pos.lat.toFixed(5)}, ${pos.lon.toFixed(5)}</a>. Share this with ${escapeHtml(contact)}: <a href="https://wa.me/${normalizePhone(document.getElementById('contactPhone').value)}?text=${encodeURIComponent('My live position: https://www.google.com/maps?q=' + pos.lat + ',' + pos.lon)}" target="_blank">Send location via WhatsApp</a>.` : 'Enable GPS so I can pin your live position.';
+  } else if (q.includes('auto') || q.includes('taxi') || q.includes('cab') || q.includes('ola') || q.includes('uber') || q.includes('bus')) {
+    ans = `<strong>Ride safety:</strong> share your trip before boarding: <a href="https://wa.me/${normalizePhone(document.getElementById('contactPhone').value)}?text=${encodeURIComponent('AURA trip share — boarding a ride: ' + (state.pickup || '') + ' → ' + (state.destination || ''))}" target="_blank">Send WhatsApp share to ${escapeHtml(contact)}</a>. Keep Check-In active while travelling. Note the cab number — share it via the message box if needed.`;
+  } else if (q.includes('wait') || q.includes('intzaar') || q.includes('place') || q.includes('sit')) {
+    ans = pos ? `<strong>Safe place to wait:</strong> ${nearestSpotAdvice(pos)}` : 'Enable GPS to find a trusted spot nearby.';
+  } else if (q.includes('police') || q.includes('emergency') || q.includes('danger') || q.includes('bula')) {
+    ans = pos ? `<strong>Emergency:</strong> ${areaAdvice(pos, 'emergency')}` : 'Enable GPS to find a police post or hospital nearby. In an emergency call 112.';
+  } else {
+    ans = `<strong>Live status:</strong> ${pos ? `You're at ${pos.lat.toFixed(5)}, ${pos.lon.toFixed(5)}` : 'Location not shared yet'}. Journey: ${escapeHtml(state.pickup || '—')} → ${escapeHtml(state.destination || '—')}. Check-In is ${state.checkinEscalated ? 'escalated' : state.checkinNow ? 'ready' : 'armed'}. What's happening?`;
+  }
+  el.innerHTML = ans;
+}
+
+async function areaAdvice(pos, kind) {
+  const ctx = await detectAreaContext(pos.lat, pos.lon);
+  const note = buildSafetyNote(ctx);
+  if (kind === 'stray') return note;
+  if (kind === 'medical' && ctx.hospital) {
+    return `${note}. <a href="https://www.google.com/maps/dir/?api=1&destination=${ctx.hospital.lat},${ctx.hospital.lon}&travelmode=driving" target="_blank">Directions to ${escapeHtml(ctx.hospital.name)}</a>`;
+  }
+  if (kind === 'emergency' && ctx.police) {
+    return `${note}. <a href="https://www.google.com/maps/dir/?api=1&destination=${ctx.police.lat},${ctx.police.lon}&travelmode=driving" target="_blank">Directions to police post</a>`;
+  }
+  if (kind === 'dark') return note;
+  return note;
+}
+
+async function nearestSpotAdvice(pos) {
+  try {
+    const spots = await queryNearbySafe(pos.lat, pos.lon);
+    if (!spots.length) return 'No trusted spots found nearby right now — stay on the main road and keep Check-In active.';
+    const s = spots[0];
+    const km = s.distKm < 1 ? `${Math.round(s.distKm * 1000)} m` : `${s.distKm.toFixed(1)} km`;
+    return `Nearest trusted spot: <strong>${escapeHtml(s.name)}</strong> ~${km} away · <a href="https://www.google.com/maps/dir/?api=1&destination=${s.lat},${s.lon}&travelmode=walking" target="_blank">Walk there now</a>`;
+  } catch { return 'Live spot search is busy — stay on the main road and keep Check-In active.'; }
+}
+
+function shareTrip() {
+  const pos = lastKnownPos || liveState.userLoc;
+  const body = `AURA trip share — ${userName || 'Traveler'}\nJourney: ${state.pickup || '—'} → ${state.destination || '—'}\nLive position: ${pos ? 'https://www.google.com/maps?q=' + pos.lat + ',' + pos.lon : 'not shared'}\nCheck-In active.`;
+  const phone = normalizePhone(document.getElementById('contactPhone').value);
+  if (phone) {
+    window.open(`https://wa.me/${phone}?text=${encodeURIComponent(body)}`, '_blank');
+    notify('Trip shared with your trusted contact via WhatsApp. Location included.');
+  } else {
+    notify('Add your trusted contact number in the Plan step first, then try sharing again.', 'alert');
+  }
+}
+
+const assistSendBtn = document.getElementById('assistSend');
+const assistInput = document.getElementById('assistInput');
+if (assistSendBtn && assistInput) {
+  assistSendBtn.addEventListener('click', () => { if (assistInput.value.trim()) answerAssist(assistInput.value); });
+  assistInput.addEventListener('keydown', (e) => { if (e.key === 'Enter' && assistInput.value.trim()) answerAssist(assistInput.value); });
+}
+
 document.querySelectorAll('.assistant-btn').forEach((btn) => {
   btn.addEventListener('click', () => {
     const text = btn.textContent.trim();
     if (text.includes('Re-route')) {
-      const idx = Math.floor(Math.random() * routes.length);
-      const r = routes[idx];
-      state.route = r;
-      state.timer = r.time * 60 * 1.6;
-      liveRouteName.textContent = r.name;
-      timerValue.textContent = formatTime(state.timer);
-      confidenceFill.style.width = `${r.confidence}%`;
-      confidenceVal.textContent = `${r.confidence}% High`;
-      distEta.innerHTML = `${(2 + Math.random() * 2).toFixed(1)} km left · ETA <strong>${r.time} min</strong>`;
-      startTimer();
-      notify(`Re-routed to the ${r.name} route with fresh data. Why: better coverage on main roads.`);
+      if (lastKnownPos && geoData.destination) {
+        notify('AURA is re-routing from your live position with a safety check…', 'alert');
+        rerouteFromCurrent();
+      } else {
+        const idx = Math.floor(Math.random() * routes.length);
+        const r = routes[idx];
+        state.route = r;
+        state.timer = r.time * 60 * 1.6;
+        liveRouteName.textContent = r.name;
+        timerValue.textContent = formatTime(state.timer);
+        confidenceFill.style.width = `${r.confidence}%`;
+        confidenceVal.textContent = `${r.confidence}% High`;
+        distEta.innerHTML = `${(state.distanceKm || (2 + Math.random() * 2)).toFixed(1)} km left · ETA <strong>${r.time} min</strong>`;
+        startTimer();
+        notify(`Re-routed to the ${r.name} route with fresh data. ${r.reason || 'Coverage on main roads.'}`);
+      }
     } else if (text.includes('Feeling uncomfortable')) {
-      notify('Nearby: City Library (80 m). Populated area. AURA will check in every 10 minutes.');
+      answerAssist('feeling unsafe uncomfortable someone following');
     } else if (text.includes('Share')) {
-      notify('Trip shared with your trusted contact. Location included in the message.');
+      shareTrip();
     } else if (text.includes('wait')) {
-      const s = stops[Math.floor(Math.random() * stops.length)];
-      notify(`Find a place to wait: checked live trusted stops near you — they keep Check-In active.`);
+      answerAssist('find a place to wait');
     }
   });
 });

@@ -349,7 +349,12 @@
             </div>
             <div class="situation-assistant">
               <h5>Situation assistant</h5>
-              <p>One tap. One concrete next step.</p>
+              <p>Tell AURA what's happening. It answers with live data — not canned text.</p>
+              <div class="assistant-input">
+                <input type="text" id="assistInput" placeholder="e.g. dark street, someone following, dogs, fever, lost, auto, wait…" autocomplete="off">
+                <button class="assistant-btn" id="assistSend">Ask</button>
+              </div>
+              <div class="assistant-answer hidden" id="assistAnswer"></div>
               <div class="assistant-actions">
                 <button class="assistant-btn">🔄 Re-route now</button>
                 <button class="assistant-btn">😟 Feeling uncomfortable</button>
