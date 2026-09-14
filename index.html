@@ -6,6 +6,8 @@
   <title>AURA — Awareness · Understanding · Response · Assistance</title>
   <link rel="stylesheet" href="style.css">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="">
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
 </head>
 <body>
 
@@ -313,6 +315,11 @@
             <h4>Choose your route</h4>
             <p class="panel-hint" id="routeHint">Three modes computed from live data.</p>
             <div class="route-options" id="routeOptions"></div>
+            <div class="transit-section">
+              <h5>Metro &amp; transit near your destination</h5>
+              <p class="panel-hint" id="transitStatus">AURA lists stations so you can switch modes safely.</p>
+              <div id="transitList"></div>
+            </div>
             <button class="btn btn-primary btn-full" id="startBtn" disabled>Select a route to start</button>
             <button class="btn btn-ghost btn-full" id="backToPlan">← Back to planning</button>
           </div>
@@ -326,6 +333,14 @@
                 <div class="dist-eta" id="distEta">3.2 km left · ETA <strong>31 min</strong></div>
               </div>
               <div class="journey-map">✦</div>
+            </div>
+            <div class="live-track">
+              <div id="liveMap"></div>
+              <div class="off-route-banner hidden" id="offRouteBanner">
+                <strong>⚠ You might be going off the planned route</strong>
+                <span id="offRouteDetail"></span>
+              </div>
+              <div class="track-status" id="trackStatus"><span class="track-dot"></span> Waiting for GPS…</div>
             </div>
             <div class="confidence-meter">
               <span>Data Confidence</span>

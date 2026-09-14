@@ -396,6 +396,143 @@ function savePlacesCache(key, places) {
   } catch { /* storage full — ignore */ }
 }
 
+// ===== PUBLIC TRANSPORT (metro / rail / bus) =====
+function transitKind(tags) {
+  const rw = tags.railway || '';
+  const st = tags.station || '';
+  const pt = tags.public_transport || '';
+  if (st === 'subway' || rw === 'subway_entrance' || rw === 'station') {
+    return { icon: '🚇', kind: st === 'subway' || rw === 'subway_entrance' ? 'Metro station' : 'Metro / rail station' };
+  }
+  if (rw === 'tram_stop' || pt === 'stop_position') return { icon: '🚊', kind: 'Tram / transit stop' };
+  if (tags.amenity === 'bus_station' || pt === 'station') return { icon: '🚌', kind: 'Bus station' };
+  return null;
+}
+
+function isTransitTags(tags) {
+  return transitKind(tags) !== null;
+}
+
+// Node+way parse of an OSM map extract for transit POIs (same trick as queryOsmMap)
+function parseOsmTransit(xml) {
+  const nodes = new Map();
+  const allNodes = /<node id="(\d+)"[^>]*?lat="([-.\d]+)" lon="([-.\d]+)"[^>]*\/?>/g;
+  let m;
+  while ((m = allNodes.exec(xml)) !== null) nodes.set(m[1], { lat: parseFloat(m[2]), lon: parseFloat(m[3]) });
+  const out = [];
+  const push = (tags, lat, lon) => {
+    const k = transitKind(tags);
+    if (!k || !tags.name) return;
+    out.push({ name: tags.name, icon: k.icon, kind: k.kind, tags, lat, lon });
+  };
+  const readTags = (body) => {
+    const tags = {};
+    const tRe = /<tag k="([^"]+)" v="([^"]*)"/g;
+    let tm;
+    while ((tm = tRe.exec(body)) !== null) tags[tm[1]] = tm[2];
+    return tags;
+  };
+  const nodeTyped = /<node id="\d+"[^>]*?lat="([-.\d]+)" lon="([-.\d]+)"[^>]*>([\s\S]*?)<\/node>/g;
+  while ((m = nodeTyped.exec(xml)) !== null) {
+    const tags = readTags(m[3]);
+    if (isTransitTags(tags)) push(tags, parseFloat(m[1]), parseFloat(m[2]));
+  }
+  const wayRe = /<way id="\d+"[^>]*>([\s\S]*?)<\/way>/g;
+  while ((m = wayRe.exec(xml)) !== null) {
+    const tags = readTags(m[1]);
+    if (!isTransitTags(tags) || !tags.name) continue;
+    const refs = /<nd ref="(\d+)"[^>]*\/?>/g;
+    let rm, sx = 0, sy = 0, n = 0;
+    while ((rm = refs.exec(m[1])) !== null) {
+      const p = nodes.get(rm[1]);
+      if (p) { sx += p.lat; sy += p.lon; n++; }
+    }
+    if (n) push(tags, sx / n, sy / n);
+  }
+  const seen = new Set();
+  return out.filter((p) => {
+    const key = p.name.toLowerCase();
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+async function queryTransit(lat, lon) {
+  const south = lat - 0.03, north = lat + 0.03, west = lon - 0.03, east = lon + 0.03;
+  const bbox = `${south},${west},${north},${east}`;
+  const query = `[out:json][timeout:12];
+(
+  node["railway"~"^(station|subway_entrance|tram_stop)$"](${bbox});
+  node["station"~"^(subway|light_rail|rail)$"](${bbox});
+  node["public_transport"](${bbox});
+  node["amenity"="bus_station"](${bbox});
+  way["railway"="station"](${bbox});
+  way["amenity"="bus_station"](${bbox});
+);
+out body 25;`;
+  let lastErr = new Error('no servers');
+  for (const server of OVERPASS_SERVERS) {
+    try {
+      const res = await fetchWithTimeout(server, { method: 'POST', body: `data=${encodeURIComponent(query)}` }, 7000);
+      if (!res.ok) { lastErr = new Error(`${server} -> ${res.status}`); continue; }
+      const data = await res.json();
+      const stops = [];
+      data.elements.forEach((el) => {
+        let elat = el.lat, elon = el.lon;
+        if (elat === undefined && el.center) { elat = el.center.lat; elon = el.center.lon; }
+        if (elat === undefined) return;
+        const tags = el.tags || {};
+        if (!tags.name) return;
+        const k = transitKind(tags);
+        if (!k) return;
+        stops.push({ name: tags.name, icon: k.icon, kind: k.kind, tags, lat: elat, lon: elon });
+      });
+      if (stops.length) return stops;
+      lastErr = new Error(`${server} -> empty`);
+    } catch (err) {
+      lastErr = err;
+    }
+  }
+  // Fallback: small OSM map extract around the point
+  const d = 0.015;
+  const bx = `${(lon - d).toFixed(4)},${(lat - d).toFixed(4)},${(lon + d).toFixed(4)},${(lat + d).toFixed(4)}`;
+  const res = await fetchWithTimeout(`https://api.openstreetmap.org/api/0.6/map?bbox=${bx}`, {}, 12000);
+  if (!res.ok) throw new Error(`osmapi ${res.status}`);
+  return parseOsmTransit(await res.text());
+}
+
+async function loadTransitNear(lat, lon, label) {
+  const statusEl = document.getElementById('transitStatus');
+  const listEl = document.getElementById('transitList');
+  if (!statusEl || !listEl) return;
+  if (!lat || !lon) {
+    statusEl.textContent = 'Pick destination suggestions to see metro & bus stations.';
+    listEl.innerHTML = '';
+    return;
+  }
+  statusEl.textContent = `Finding metro & bus stations near ${label || 'your destination'}…`;
+  listEl.innerHTML = '<div class="transit-item"><span class="transit-icon">🚇</span><div><div class="transit-name">Searching stations…</div></div></div>';
+  try {
+    const stops = await queryTransit(lat, lon);
+    if (!stops.length) throw new Error('none');
+    stops.forEach((s) => { s.distKm = haversine(lat, lon, s.lat, s.lon); });
+    stops.sort((a, b) => a.distKm - b.distKm);
+    listEl.innerHTML = '';
+    stops.slice(0, 6).forEach((s) => {
+      const it = document.createElement('div');
+      it.className = 'transit-item';
+      const km = s.distKm < 1 ? `${Math.round(s.distKm * 1000)} m` : `${s.distKm.toFixed(1)} km`;
+      it.innerHTML = `<span class="transit-icon">${s.icon}</span><div><div class="transit-name">${escapeHtml(s.name)}</div><div class="transit-detail">${s.kind} · ${km} from destination</div></div>`;
+      listEl.appendChild(it);
+    });
+    statusEl.textContent = `${Math.min(6, stops.length)} station${stops.length > 1 ? 's' : ''} near ${label || 'your destination'} — switch modes safely.`;
+  } catch {
+    listEl.innerHTML = '';
+    statusEl.textContent = 'Stations could not be fetched right now. Routing and Check-In still work.';
+  }
+}
+
 async function queryTrustedPlaces(lat1, lon1, lat2, lon2) {
   const south = Math.min(lat1, lat2) - 0.03;
   const north = Math.max(lat1, lat2) + 0.03;
@@ -1165,6 +1302,11 @@ planBtn.addEventListener('click', async () => {
   routeDistKm = km || 0;
 
   loadTrustedPlaces();
+  loadTransitNear(
+    geoData.destination ? geoData.destination.lat : null,
+    geoData.destination ? geoData.destination.lon : null,
+    dest
+  );
 
   buildRouteOptions();
   routeHint.textContent = usedLive
@@ -1240,6 +1382,7 @@ startBtn.addEventListener('click', () => {
   startTimer();
   notify(`Journey started. Check-In armed for ${state.pickup} → ${state.destination}.`);
   loadTrustedPlaces();
+  initLiveMap();
 });
 
 function startTimer() {
@@ -1431,6 +1574,7 @@ arrivedBtn.addEventListener('click', () => {
 });
 
 function showArrival(confirmed) {
+  destroyLiveMap();
   hide(journeyPanel);
   show(arrivedPanel);
   escalationCard.classList.add('hidden');
@@ -1447,6 +1591,7 @@ function showArrival(confirmed) {
 }
 
 planAnother.addEventListener('click', () => {
+  destroyLiveMap();
   hide(arrivedPanel);
   show(planPanel);
   state.route = null;
@@ -1457,6 +1602,126 @@ planAnother.addEventListener('click', () => {
   startBtn.disabled = true;
   startBtn.textContent = 'Select a route to start';
 });
+
+// ===== LIVE TRACKER + MAP (Leaflet) =====
+let journeyMap = null, userMarker = null, routeLine = null, watchId = null;
+let lastKnownPos = null, offRouteActive = false, mapFollow = true;
+
+const trackStatusEl = document.getElementById('trackStatus');
+const offRouteBanner = document.getElementById('offRouteBanner');
+const offRouteDetail = document.getElementById('offRouteDetail');
+
+function setTrackStatus(text, mode) {
+  if (!trackStatusEl) return;
+  trackStatusEl.innerHTML = `<span class="track-dot"></span> ${text}`;
+  trackStatusEl.className = 'track-status' + (mode ? ' ' + mode : '');
+}
+
+function initLiveMap() {
+  const container = document.getElementById('liveMap');
+  if (!container) {
+    setTrackStatus('Map not available — Check-In stays active.', 'gps-off');
+    return;
+  }
+  if (typeof L === 'undefined') {
+    setTrackStatus('Map loading failed — Check-In stays active.', 'gps-off');
+    return;
+  }
+  if (journeyMap) { journeyMap.remove(); journeyMap = null; }
+  journeyMap = L.map(container, { zoomControl: true }).setView([20.6, 78.9], 5);
+  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 19,
+    attribution: '&copy; OpenStreetMap',
+  }).addTo(journeyMap);
+
+  if (routeGeom && routeGeom.length > 1) {
+    routeLine = L.polyline(routeGeom, { color: '#e0235a', weight: 4, opacity: 0.85, smoothFactor: 1 }).addTo(journeyMap);
+    journeyMap.fitBounds(routeLine.getBounds(), { padding: [36, 36] });
+    const start = routeGeom[0];
+    const end = routeGeom[routeGeom.length - 1];
+    L.circleMarker([start[0], start[1]], { radius: 6, color: '#0f766e', fillColor: '#0f766e', fillOpacity: 1 }).addTo(journeyMap).bindTooltip('Pick-up');
+    L.circleMarker([end[0], end[1]], { radius: 6, color: '#e0235a', fillColor: '#e0235a', fillOpacity: 1 }).addTo(journeyMap).bindTooltip('Destination');
+  }
+
+  const home = lastKnownPos ? [lastKnownPos.lat, lastKnownPos.lon] : (liveState.userLoc ? [liveState.userLoc.lat, liveState.userLoc.lon] : null);
+  if (home) {
+    userMarker = L.marker(home).addTo(journeyMap).bindTooltip('You');
+    if (routeGeom && routeGeom.length > 1) journeyMap.setView(home, Math.max(journeyMap.getZoom(), 13));
+  } else {
+    userMarker = L.marker([20.6, 78.9]).addTo(journeyMap);
+  }
+
+  offRouteActive = false;
+  offRouteBanner.classList.add('hidden');
+  if (lastKnownPos) checkOffRoute();
+  startTracking();
+}
+
+function startTracking() {
+  if (watchId !== null) return;
+  if (!navigator.geolocation) {
+    setTrackStatus('GPS not supported on this device.', 'gps-off');
+    return;
+  }
+  if (liveState.userLoc) onTrackPos({ coords: { latitude: liveState.userLoc.lat, longitude: liveState.userLoc.lon, accuracy: 0 } });
+  watchId = navigator.geolocation.watchPosition(
+    onTrackPos,
+    () => setTrackStatus('GPS unavailable — Check-In stays active.', 'gps-off'),
+    { enableHighAccuracy: true, maximumAge: 5000, timeout: 20000 }
+  );
+  if (watchId === null) setTrackStatus('Waiting for GPS fix…');
+}
+
+function onTrackPos(pos) {
+  const lat = pos.coords.latitude;
+  const lon = pos.coords.longitude;
+  lastKnownPos = { lat, lon };
+  if (userMarker) userMarker.setLatLng([lat, lon]);
+  if (mapFollow && journeyMap) journeyMap.setView([lat, lon], Math.max(journeyMap.getZoom(), 13));
+  checkOffRoute();
+}
+
+function checkOffRoute() {
+  if (!lastKnownPos) return;
+  if (!routeGeom || routeGeom.length < 2) {
+    setTrackStatus('Route line unavailable — locating you…');
+    return;
+  }
+  const mt = distToRoute(lastKnownPos.lat, lastKnownPos.lon, routeGeom);
+  const offM = mt.off * 1000;
+  const fmtM = (m) => (m >= 1000 ? (m / 1000).toFixed(1) + ' km' : Math.round(m) + ' m');
+  if (offM > 1600) {
+    setTrackStatus(`${fmtM(offM)} off the planned route`, 'off');
+    offRouteBanner.classList.remove('hidden');
+    offRouteDetail.textContent = `You're about ${fmtM(offM)} away from the route line. Check-In stays active and trusted stops near this spot are listed in Saved Places.`;
+    if (!offRouteActive) {
+      offRouteActive = true;
+      notify('Heads-up: you might be going off the planned AURA route. AURA keeps monitoring you.', 'alert');
+    }
+  } else {
+    setTrackStatus(`You're on the route · ${fmtM(offM)} from the line`);
+    offRouteBanner.classList.add('hidden');
+    offRouteActive = false;
+  }
+}
+
+function stopTracking() {
+  if (watchId !== null) {
+    navigator.geolocation.clearWatch(watchId);
+    watchId = null;
+  }
+  offRouteBanner.classList.add('hidden');
+}
+
+function destroyLiveMap() {
+  stopTracking();
+  if (journeyMap) {
+    journeyMap.remove();
+    journeyMap = null;
+    userMarker = null;
+    routeLine = null;
+  }
+}
 
 // ===== SITUATION ASSISTANT =====
 document.querySelectorAll('.assistant-btn').forEach((btn) => {

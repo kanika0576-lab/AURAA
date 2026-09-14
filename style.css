@@ -1933,3 +1933,120 @@ input::placeholder {
     grid-template-columns: 1fr;
   }
 }
+
+/* LIVE TRACKER + MAP */
+.live-track {
+  position: relative;
+  margin-bottom: 18px;
+}
+
+#liveMap {
+  height: 260px;
+  width: 100%;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: #e8ecef;
+  z-index: 0;
+}
+
+#liveMap .leaflet-control-attribution {
+  font-size: 9px;
+  background: rgba(255, 255, 255, 0.7);
+}
+
+.off-route-banner {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  right: 10px;
+  background: #fff1f2;
+  border: 1px solid var(--red);
+  color: var(--red);
+  border-radius: var(--radius-sm);
+  padding: 10px 14px;
+  font-size: 0.85rem;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.18);
+  z-index: 400;
+}
+
+.off-route-banner span {
+  opacity: 0.9;
+  font-weight: 500;
+  font-size: 0.78rem;
+}
+
+.track-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+  font-size: 0.82rem;
+  color: var(--text-muted);
+}
+
+.track-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--green);
+  box-shadow: 0 0 0 4px rgba(15, 118, 110, 0.15);
+  flex-shrink: 0;
+}
+
+.track-status.off .track-dot {
+  background: var(--red);
+  box-shadow: 0 0 0 4px rgba(220, 38, 38, 0.15);
+}
+
+.track-status.gps-off .track-dot {
+  background: var(--text-dim);
+  box-shadow: none;
+}
+
+/* TRANSIT SUGGESTIONS */
+.transit-section {
+  margin: 18px 0 22px;
+}
+
+.transit-section h5 {
+  font-size: 0.92rem;
+  margin-bottom: 6px;
+}
+
+.transit-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  background: var(--bg-soft);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  margin-bottom: 8px;
+}
+
+.transit-icon {
+  font-size: 1.15rem;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.transit-name {
+  font-size: 0.86rem;
+  font-weight: 600;
+}
+
+.transit-detail {
+  font-size: 0.74rem;
+  color: var(--text-muted);
+  margin-top: 1px;
+}
