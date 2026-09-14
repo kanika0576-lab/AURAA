@@ -729,6 +729,11 @@ section {
   z-index: 10;
 }
 
+/* While a suggestion list is open, lift the whole group above the fields below it */
+.input-group.suggesting {
+  z-index: 400;
+}
+
 .suggestions {
   position: absolute;
   top: calc(100% + 4px);
@@ -738,8 +743,8 @@ section {
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   box-shadow: 0 14px 34px rgba(233, 30, 99, 0.16);
-  z-index: 30;
-  max-height: 260px;
+  z-index: 500;
+  max-height: 300px;
   overflow-y: auto;
   display: none;
 }
@@ -753,9 +758,9 @@ section {
   display: flex;
   flex-direction: column;
   gap: 2px;
-  padding: 11px 14px;
+  padding: 12px 14px;
   cursor: pointer;
-  font-size: 0.86rem;
+  font-size: 0.9rem;
   color: var(--text);
   border-bottom: 1px solid var(--bg-soft);
   text-align: left;
