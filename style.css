@@ -2011,6 +2011,29 @@ input::placeholder {
   box-shadow: none;
 }
 
+.gps-live {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  margin-top: 6px;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  background: rgba(15, 118, 110, 0.06);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 4px 12px;
+}
+
+.gps-live b {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.gps-sep {
+  opacity: 0.4;
+}
+
 /* TRANSIT SUGGESTIONS */
 .transit-section {
   margin: 18px 0 22px;

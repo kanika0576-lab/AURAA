@@ -198,12 +198,13 @@ async function fetchWeather(lat, lon) {
   const res = await fetchWithTimeout(url, {}, 8000);
   const data = await res.json();
   const c = data.current;
-  return {
+return {
     temp: Math.round(c.temperature_2m),
     precip: c.precipitation,
     code: c.weather_code,
     desc: weatherDescription(c.weather_code),
     rain: isRainy(c.weather_code, c.precipitation),
+    heavy: isRainy(c.weather_code, c.precipitation) && (c.precipitation >= 2),
   };
 }
 
@@ -211,6 +212,12 @@ function applyWeather(w) {
   liveState.weather = w;
   liveState.weatherInfo.textContent = `${w.temp}°C · ${w.desc}`;
   if (w.rain) {
+    const r = document.getElementById('rainDetail');
+    if (r) {
+      r.textContent = w.heavy
+        ? `Heavy rain — watch for water logging on low roads. Route may change; AURA will re-route live if unsafe.`
+        : `Light rain — low roads can water-log fast. Route may change; AURA re-routes live if unsafe.`;
+    }
     liveState.rainBanner.classList.remove('hidden');
   } else {
     liveState.rainBanner.classList.add('hidden');
@@ -835,6 +842,17 @@ const state = {
   deadline: 0,
   timerInterval: null,
   notified: false,
+  waitForMove: false,
+  timerStarted: false,
+  movedAt: 0,
+  movedDist: 0,
+  lastPosForMove: null,
+  moveFallback: null,
+  reroutingActive: false,
+  offRouteStrikes: 0,
+  gpsSpeed: 0,
+  gpsDist: 0,
+  gpsLast: null,
 };
 
 const routes = [
@@ -1737,7 +1755,22 @@ function startTracking() {
 function onTrackPos(pos) {
   const lat = pos.coords.latitude;
   const lon = pos.coords.longitude;
-  lastKnownPos = { lat, lon };
+  const accuracy = pos.coords.accuracy;
+  const now = Date.now();
+  lastKnownPos = { lat, lon, accuracy };
+
+  // Live speed + distance since the timer started
+  if (state.timerStarted && state.gpsLast) {
+    const seg = haversine(state.gpsLast.lat, state.gpsLast.lon, lat, lon);
+    const dt = (now - state.gpsLast.t) / 1000;
+    if (seg > 0.003 && dt > 1.5) {
+      state.gpsSpeed = (seg / (dt / 3600)).toFixed(1); // km/h
+      state.gpsDist += seg * 1000;
+    }
+  }
+  state.gpsLast = { lat, lon, t: now };
+  renderGpsStats(accuracy);
+
   if (state.waitForMove && state.route) {
     if (!state.lastPosForMove) {
       state.lastPosForMove = { lat, lon };
@@ -1759,6 +1792,20 @@ function onTrackPos(pos) {
   checkOffRoute();
 }
 
+function renderGpsStats(accuracy) {
+  const el = document.getElementById('gpsStats');
+  if (!el) return;
+  const speedEl = document.getElementById('gpsSpeed');
+  const distEl = document.getElementById('gpsDist');
+  const accEl = document.getElementById('gpsAcc');
+  if (speedEl) speedEl.textContent = state.timerStarted ? state.gpsSpeed : '—';
+  if (distEl) {
+    const m = Math.round(state.gpsDist);
+    distEl.textContent = m >= 1000 ? (m / 1000).toFixed(2) + ' km' : String(m);
+  }
+  if (accEl) accEl.textContent = accuracy ? `±${Math.round(accuracy)} m` : '—';
+}
+
 function checkOffRoute() {
   if (!lastKnownPos) return;
   // GPS accuracy gets unreliable at the very start — don't cry wolf until ~30s after movement begins
@@ -1771,8 +1818,12 @@ function checkOffRoute() {
   const mt = distToRoute(lastKnownPos.lat, lastKnownPos.lon, routeGeom);
   const offM = mt.off * 1000;
   const fmtM = (m) => (m >= 1000 ? (m / 1000).toFixed(1) + ' km' : Math.round(m) + ' m');
+
+  // Ignore GPS noise: need 2 consecutive far readings before calling it "off route".
   if (offM > 1600) {
-    setTrackStatus(`${fmtM(offM)} off the planned route`, 'off');
+    state.offRouteStrikes++;
+    setTrackStatus(`${fmtM(offM)} off the planned route${state.offRouteStrikes > 1 ? ' — confirming…' : ''}`, 'off');
+    if (state.offRouteStrikes < 2) return;
     if (!offRouteActive) {
       offRouteActive = true;
       offRouteBanner.classList.remove('hidden');
@@ -1783,7 +1834,9 @@ function checkOffRoute() {
       offRouteDetail.innerHTML = `You're about ${fmtM(offM)} away from the route line. A safer re-route was already applied — Check-In stays active.`;
     }
   } else {
-    setTrackStatus(state.waitForMove ? `On route · ${fmtM(offM)} from the line · timer starts on movement` : `You're on the route · ${fmtM(offM)} from the line`);
+    state.offRouteStrikes = 0;
+    const speedTxt = Number(state.gpsSpeed) > 0 ? ` · ${state.gpsSpeed} km/h` : '';
+    setTrackStatus(state.waitForMove ? `On route · ${fmtM(offM)} from the line · timer starts on movement` : `You're on the route · ${fmtM(offM)} from the line${speedTxt}`);
     offRouteBanner.classList.add('hidden');
     offRouteActive = false;
   }
@@ -1927,6 +1980,11 @@ function stopTracking() {
     watchId = null;
   }
   offRouteBanner.classList.add('hidden');
+  state.offRouteStrikes = 0;
+  state.gpsSpeed = 0;
+  state.gpsDist = 0;
+  state.gpsLast = null;
+  renderGpsStats(null);
 }
 
 function destroyLiveMap() {

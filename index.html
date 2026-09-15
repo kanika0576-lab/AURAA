@@ -75,7 +75,7 @@
         </div>
         <div class="rain-banner hidden" id="rainBanner">
           <span>☔</span>
-          <p><strong>Rain detected.</strong> Routes may change. AURA recommends the Balanced or Resilient route tonight. Consider adding an ETA buffer.</p>
+          <p><strong>Rain ahead.</strong> <span id="rainDetail">Routes may change due to water logging on low roads.</span></p>
         </div>
       </div>
     </section>
@@ -341,6 +341,13 @@
                 <span id="offRouteDetail"></span>
               </div>
               <div class="track-status" id="trackStatus"><span class="track-dot"></span> Waiting for GPS…</div>
+              <div class="gps-live" id="gpsStats">
+                <span><b id="gpsSpeed">—</b> km/h</span>
+                <span class="gps-sep">·</span>
+                <span><b id="gpsDist">0</b> m moved</span>
+                <span class="gps-sep">·</span>
+                <span>accuracy <b id="gpsAcc">—</b></span>
+              </div>
             </div>
             <div class="confidence-meter">
               <span>Data Confidence</span>
