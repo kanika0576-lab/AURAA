@@ -709,7 +709,11 @@ section {
 }
 
 .app-panel.hidden {
-  display: none;
+  display: none !important;
+}
+
+.hidden {
+  display: none !important;
 }
 
 .app-panel h4 {
