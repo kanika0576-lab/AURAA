@@ -691,6 +691,8 @@ section {
   max-width: 620px;
   margin: 0 auto;
   position: relative;
+  overflow-anchor: none;
+  scroll-margin-top: 24px;
 }
 
 .app-panel {
@@ -2272,6 +2274,84 @@ input::placeholder {
   color: var(--text-muted);
   margin-top: 12px;
   text-align: center;
+}
+
+/* ===== LIVE VERDICT (landing, no journey needed) ===== */
+.live-verdict {
+  margin-top: 30px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-left-width: 4px;
+  border-radius: var(--radius);
+  padding: 18px 22px;
+  transition: border-color 0.4s ease, background 0.4s ease;
+}
+
+.live-verdict.v-low { border-left-color: var(--risk-low); background: #ecfdf5; }
+.live-verdict.v-elevated { border-left-color: var(--risk-elevated); background: #fffbeb; }
+.live-verdict.v-high { border-left-color: var(--risk-high); background: #fff7ed; }
+.live-verdict.v-critical { border-left-color: var(--risk-critical); background: #fef2f2; }
+
+.live-verdict-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.live-verdict-badge {
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  background: var(--accent);
+  color: #fff;
+  padding: 4px 10px;
+  border-radius: 100px;
+}
+
+.live-verdict-title {
+  font-size: 0.85rem;
+  color: var(--text-dim);
+  font-weight: 600;
+}
+
+.live-verdict-body {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.lv-dot {
+  font-size: 2rem;
+  line-height: 1;
+}
+
+.lv-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.lv-main strong {
+  font-size: 1.05rem;
+  color: var(--text);
+}
+
+.lv-main span {
+  font-size: 0.84rem;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+.lv-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  font-weight: 700;
+  white-space: nowrap;
+  text-align: right;
 }
 
 /* ===== EXPANSION PATH ===== */

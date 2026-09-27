@@ -1015,8 +1015,8 @@ function riskNotify(msg) {
 
 function updateRisk() {
   if (!document.getElementById('riskBanner')) return;
-  if (!state.route || !state.timerStarted) {
-    // Engine still evaluates time/weather, but the live banner only shows live.
+  if (!state.route) {
+    renderLandingRisk();
     return;
   }
   riskEngine.prevLevel = riskEngine.level;
@@ -1051,13 +1051,69 @@ function updateRisk() {
   }
 }
 
-// Timer-driven risk recomputation during a journey (~ every 15s).
+// Timer-driven risk recomputation (~ every 15s) — also drives the landing verdict.
 setInterval(() => {
   const now = Date.now();
   if (now - riskEngine.lastTick < 15000) return;
   riskEngine.lastTick = now;
-  if (state.timerStarted) updateRisk();
+  if (state.timerStarted) {
+    updateRisk();
+  } else {
+    renderLandingRisk();
+  }
 }, 1000);
+
+// Landing verdict — the engine keeps running even before a journey starts,
+// so judges see "Risk is dynamic" working live without entering the app.
+function renderLandingRisk() {
+  const card = document.getElementById('landingVerdict');
+  if (!card) return;
+  const score = timeRiskNow() + weatherRiskNow() + communityRiskScore();
+  const level = riskLevelFromScore(score);
+  const meta = RISK_LEVELS[level];
+  const conf = communityConfidenceNow();
+
+  const dot = document.getElementById('lvDot');
+  const title = document.getElementById('lvTitle');
+  const detail = document.getElementById('lvDetail');
+  const scoreEl = document.getElementById('lvScore');
+  const confEl = document.getElementById('lvConfidence');
+  const timeEl = document.getElementById('lvTime');
+  const weatherEl = document.getElementById('lvWeather');
+
+  if (dot) dot.textContent = meta.dot;
+  if (title) title.textContent = meta.label;
+  if (detail) {
+    if (level === 'normal') {
+      detail.textContent = `Daytime hours — signals steady across the region. ${meta.action}`;
+    } else if (level === 'elevated') {
+      detail.textContent = `A signal changed — ${meta.action}`;
+    } else {
+      detail.textContent = meta.action;
+    }
+  }
+  if (scoreEl) scoreEl.textContent = `Score ${score}`;
+  if (confEl) confEl.textContent = `${conf}% confident`;
+  if (timeEl) {
+    const now = new Date();
+    const h = now.getHours();
+    const period = h >= 22 || h < 5 ? 'late-night hours' : h >= 19 ? 'evening' : h >= 17 ? 'post-work' : h < 8 ? 'early hours' : 'daytime hours';
+    timeEl.textContent = `🕐 ${now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} · ${period}`;
+  }
+  if (weatherEl) {
+    weatherEl.textContent = liveState.weather
+      ? `☔ ${liveState.weather.temp}°C · ${liveState.weather.desc}`
+      : '☔ weather: enable location to fold it in';
+  }
+
+  card.className = 'live-verdict';
+  card.classList.remove('v-low', 'v-elevated', 'v-high', 'v-critical');
+  card.classList.add('v-' + (level === 'normal' ? 'low' : level));
+  card.dataset.level = level;
+}
+
+// Kick the verdict on load so the landing section is never blank.
+renderLandingRisk();
 
 function resetRiskEngine() {
   riskEngine.prevLevel = 'normal';
@@ -1861,6 +1917,11 @@ function showArrival(confirmed) {
     ? '<span>✓ Trusted contact was never notified.</span><span>✓ Journey log stays on your device.</span>'
     : '<span>! Escalation only if you do not respond.</span><span>✓ You stay in control of every alert.</span>';
   arrivedDetails.style.color = confirmed ? 'var(--green)' : 'var(--red)';
+  if (arrivedBtn) arrivedBtn.blur();
+  const wrap = arrivedPanel.closest('.app-wrapper');
+  if (wrap && wrap.scrollIntoView) {
+    wrap.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
 }
 
 planAnother.addEventListener('click', () => {
