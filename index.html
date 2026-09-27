@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>AURA — Awareness · Understanding · Response · Assistance</title>
+  <title>AURA — Adaptive Urban Risk Awareness</title>
   <link rel="stylesheet" href="style.css">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="">
@@ -19,7 +19,7 @@
       <span class="logo-icon">✦</span>
       <div>
         <span class="logo-text">AURA</span>
-        <span class="logo-sub">AWARENESS · UNDERSTANDING<br>RESPONSE · ASSISTANCE</span>
+        <span class="logo-sub">ADAPTIVE URBAN<br>RISK AWARENESS</span>
       </div>
     </div>
 
@@ -28,6 +28,7 @@
 
     <nav class="sidebar-nav">
       <a href="#top" class="nav-item active"><span class="nav-icon">▦</span> Dashboard</a>
+      <a href="#engine" class="nav-item"><span class="nav-icon">♻</span> Risk engine</a>
       <a href="#app" class="nav-item"><span class="nav-icon">⌖</span> Plan a journey</a>
       <a href="#checkin" class="nav-item"><span class="nav-icon">◌</span> AURA Check-In</a>
       <a href="#places" class="nav-item"><span class="nav-icon">♥</span> Saved places</a>
@@ -56,17 +57,17 @@
     <section class="hero" id="top">
       <div class="hero-bg-glow"></div>
       <div class="hero-container">
-        <p class="hero-tag">AWARENESS · UNDERSTANDING · RESPONSE · ASSISTANCE</p>
-        <h1 class="hero-title">Never decide with <span class="gradient-text">less information</span> than AURA has.</h1>
-        <p class="hero-subtitle">A context-aware travel intelligence platform. AURA doesn't just route you from A to B — it makes sure every decision is made with full context about lighting, crowds, history, and what happens when plans change.</p>
+        <p class="hero-tag">ADAPTIVE URBAN RISK AWARENESS</p>
+        <h1 class="hero-title">Safety isn't a place. <span class="gradient-text">It's a moment.</span></h1>
+        <p class="hero-subtitle">AURA is a proactive safety-intelligence system. It watches real-world signals — time, light, weather, incidents, community reports — and asks not <em>"is this area safe?"</em> but <em>"given the current situation, how is the risk changing right now?"</em> And when risk shifts while you travel, AURA intervenes before it becomes an emergency.</p>
         <div class="hero-actions">
           <a href="#app" class="btn btn-primary">Plan a journey</a>
-          <a href="#how" class="btn btn-outline">See how it works</a>
+          <a href="#engine" class="btn btn-outline">See the risk engine</a>
         </div>
         <div class="hero-badges">
-          <span class="badge">✓ Real routing from live data</span>
-          <span class="badge">✓ Communicates uncertainty honestly</span>
-          <span class="badge">✓ Privacy-first, user-in-control</span>
+          <span class="badge">✓ Dynamic risk, not static maps</span>
+          <span class="badge">✓ Confidence-weighted community signals</span>
+          <span class="badge">✓ Intervenes before an emergency</span>
         </div>
         <div class="live-strip">
           <span class="live-item">🕒 <span id="liveClock">--:--</span></span>
@@ -76,6 +77,68 @@
         <div class="rain-banner hidden" id="rainBanner">
           <span>☔</span>
           <p><strong>Rain ahead.</strong> <span id="rainDetail">Routes may change due to water logging on low roads.</span></p>
+        </div>
+      </div>
+    </section>
+
+    <!-- THE CONCEPT: RISK IS DYNAMIC -->
+    <section class="concept" id="concept">
+      <div class="container">
+        <h2 class="section-label">The killer concept</h2>
+        <h3 class="section-title">Risk is <span class="gradient-text">not static.</span></h3>
+        <p class="section-sub">Most safety apps paint an area green or red and leave it there. But real-world risk changes hour by hour. A place can be perfectly normal at 2 PM and very different at 10 PM.</p>
+        <div class="concept-grid">
+          <div class="concept-card static">
+            <span class="concept-emoji">🟢</span>
+            <h4>The old question</h4>
+            <p class="concept-q">"Is this area safe?"</p>
+            <p class="concept-note">Static labels that ignore time, light and what's happening right now.</p>
+          </div>
+          <div class="concept-arrow">→</div>
+          <div class="concept-card dynamic">
+            <span class="concept-emoji">🟡</span>
+            <h4>The AURA question</h4>
+            <p class="concept-q">"Given today, at this hour, <em>how is the risk changing right now?</em>"</p>
+            <p class="concept-note">A live signal stream instead of a permanent verdict.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- THE RISK ENGINE (PITCH DIAGRAM) -->
+    <section class="engine" id="engine">
+      <div class="container">
+        <h2 class="section-label">The AURA risk engine</h2>
+        <h3 class="section-title">Real-world signals → <span class="gradient-text">a live risk verdict</span> → action.</h3>
+        <p class="section-sub">AURA doesn't treat every signal equally. Confidence is weighted by how many independent reports exist, how fresh they are, and whether they agree.</p>
+
+        <div class="engine-diagram">
+          <div class="engine-col">
+            <span class="engine-col-label">REAL-WORLD SIGNALS</span>
+            <div class="engine-chip">📍 Location</div>
+            <div class="engine-chip">🕐 Time of day</div>
+            <div class="engine-chip">📊 Historical incidents</div>
+            <div class="engine-chip">📢 Recent community reports</div>
+            <div class="engine-chip">🚶 Route &amp; context</div>
+            <div class="engine-chip">✅ Check-in status</div>
+            <div class="engine-chip">☔ Live weather</div>
+          </div>
+          <div class="engine-mid">
+            <span class="engine-mid-label">AURA RISK ENGINE</span>
+            <div class="engine-core">
+              <strong>Risk</strong> + <strong>Confidence</strong> + <strong>Change detection</strong>
+            </div>
+            <div class="engine-sub">One random report never labels a place dangerous.</div>
+          </div>
+          <div class="engine-col">
+            <span class="engine-col-label">PROACTIVE ACTION</span>
+            <div class="engine-chip g">🟢 Continue</div>
+            <div class="engine-chip y">🟡 Suggest a safer route</div>
+            <div class="engine-chip o">🟠 Prompt a check-in</div>
+            <div class="engine-chip r">🔴 Escalate to a trusted contact</div>
+            <div class="engine-chip g">🛡️ Offer a nearby safe stop</div>
+            <div class="engine-chip y">👤 Call for a trusted person</div>
+          </div>
         </div>
       </div>
     </section>
@@ -117,21 +180,21 @@
         <div class="problem-grid">
           <div class="problem-text">
             <h2 class="section-label">The problem</h2>
-            <h3 class="problem-heading">Navigation apps optimize for time.<br><span class="gradient-text">AURA optimizes for information.</span></h3>
-            <p>Existing apps minimize minutes. They ignore lighting, crowd density, area history, and what happens when a bus is cancelled mid-journey — the exact factors that shape confidence while traveling.</p>
+            <h3 class="problem-heading">Every safety app assumes a place <span class="gradient-text">has one verdict.</span></h3>
+            <p>Navigation apps minimize minutes. Safety apps paint areas green or red and call it done. Both ignore the exact thing that shapes real risk: it <strong>changes hour by hour.</strong> A street lit and busy at 2 PM can be isolated and dark at 10 PM — and your check-in, your route and your backups all need to adapt to that, live.</p>
           </div>
           <div class="problem-stats">
             <div class="stat-card">
-              <span class="stat-num">0%</span>
-              <span class="stat-label">Apps consider lighting conditions</span>
+              <span class="stat-num">1m+</span>
+              <span class="stat-label">Static "safe zone" labels still ignore the hour of day</span>
             </div>
             <div class="stat-card">
               <span class="stat-num">0%</span>
-              <span class="stat-label">Apps factor in crowd density</span>
+              <span class="stat-label">Safety apps track <em>change</em> in risk while you travel</span>
             </div>
             <div class="stat-card">
-              <span class="stat-num">0%</span>
-              <span class="stat-label">Apps offer fallback if plans break</span>
+              <span class="stat-num">1</span>
+              <span class="stat-label">Unverified report can brand an area dangerous forever</span>
             </div>
           </div>
         </div>
@@ -142,27 +205,27 @@
     <section class="how" id="how">
       <div class="container">
         <h2 class="section-label">How it works</h2>
-        <h3 class="section-title">One continuous journey. <span class="gradient-text">Five features.</span></h3>
+        <h3 class="section-title">One continuous journey. <span class="gradient-text">Risk that adapts with it.</span></h3>
         <div class="steps">
           <div class="step">
             <div class="step-num">01</div>
             <div class="step-content">
               <h4>Set the trip</h4>
-              <p>Enter pickup and destination. AURA geocodes real places and turns on a silent Check-In for your expected arrival — no panic button required.</p>
+              <p>Enter pickup and destination. AURA geocodes real places, reads the current risk around the route, and turns on a silent Check-In for your expected arrival — no panic button required.</p>
             </div>
           </div>
           <div class="step">
             <div class="step-num">02</div>
             <div class="step-content">
               <h4>Choose with context</h4>
-              <p>Fast, Balanced, or Resilient — each with a visible confidence meter and a human explanation computed from real data.</p>
+              <p>Fast, Balanced, or Resilient — each carrying a baseline risk verdict and confidence, computed from the signals AURA can actually see right now.</p>
             </div>
           </div>
           <div class="step">
             <div class="step-num">03</div>
             <div class="step-content">
               <h4>Travel with live awareness</h4>
-              <p>Clock, ETA countdown, distance remaining, and a one-tap situation assistant. If plans change, AURA re-routes or finds a place to wait.</p>
+              <p>Time, weather, GPS tracking and a one-tap situation assistant. If risk climbs, AURA re-routes, finds a waiting point, or prompts a check-in — before it becomes an emergency.</p>
             </div>
           </div>
           <div class="step">
@@ -176,7 +239,7 @@
             <div class="step-num">05</div>
             <div class="step-content">
               <h4>Arrive & confirm</h4>
-              <p>Check-in confirms automatically. Trusted contact was never notified. Journey log stays on your device.</p>
+              <p>Check-in confirms automatically. Trusted contact was never notified. The live risk journal stays on your device.</p>
             </div>
           </div>
         </div>
@@ -187,22 +250,22 @@
     <section class="features" id="features">
       <div class="container">
         <h2 class="section-label">Core features</h2>
-        <h3 class="section-title">Six mechanics that change <span class="gradient-text">what a journey means.</span></h3>
+        <h3 class="section-title">A risk engine wrapped in <span class="gradient-text">what a journey needs.</span></h3>
         <div class="features-grid">
           <div class="feature-card">
-            <div class="feature-icon">🗺️</div>
-            <h4>Three journey modes</h4>
-            <p><strong>Fast</strong> = shortest time. <strong>Balanced</strong> = time + contextual safety. <strong>Resilient</strong> = most recovery options — shown visually, not just as a label.</p>
+            <div class="feature-icon">♻</div>
+            <h4>Dynamic Risk verdict</h4>
+            <p><strong>Normal → Elevated → High</strong> — recomputed as time, weather, reports and context change. AURA never files an area away as "safe" or "unsafe" forever.</p>
           </div>
           <div class="feature-card">
-            <div class="feature-icon">🔍</div>
-            <h4>Explainability, not just scores</h4>
-            <p>Every mode explains itself from the data behind it: distance, minutes, and what amenities or fallback stops it actually passes.</p>
+            <div class="feature-icon">⚖️</div>
+            <h4>Confidence-weighted signals</h4>
+            <p>Community reports earn trust from the <strong>number of independent reports, their recency, and how consistent they are.</strong> One random report can't brand an area dangerous.</p>
           </div>
           <div class="feature-card">
             <div class="feature-icon">📊</div>
-            <h4>Visible confidence meter</h4>
-            <p>Every route carries a Data Confidence score computed from real signals. AURA admits what it doesn't know instead of faking certainty.</p>
+            <h4>Visible risk & confidence</h4>
+            <p>Every route carries a live risk level and the confidence behind it. AURA admits what it doesn't know instead of faking certainty.</p>
           </div>
           <div class="feature-card">
             <div class="feature-icon">☕</div>
@@ -211,13 +274,13 @@
           </div>
           <div class="feature-card">
             <div class="feature-icon">⚡</div>
-            <h4>One-tap situation assistant</h4>
-            <p>Re-route with fresh data, find a waiting point, or share your trip with a trusted contact — each with one tap.</p>
+            <h4>Proactive response</h4>
+            <p>When risk climbs mid-journey AURA suggests a safer route, a nearby safe stop, contacting a trusted person, or a check-in — before it becomes an emergency.</p>
           </div>
           <div class="feature-card">
             <div class="feature-icon">🔒</div>
             <h4>AURA Check-In</h4>
-            <p>The silent guardian. No check-in → gentle nudge → escalation path to a trusted contact — without you ever needing to trigger anything.</p>
+            <p>The escalation layer. No check-in → gentle nudge → escalation to a trusted contact — without you ever needing to trigger anything.</p>
           </div>
         </div>
       </div>
@@ -340,6 +403,14 @@
                 <strong>⚠ You might be going off the planned route</strong>
                 <span id="offRouteDetail"></span>
               </div>
+              <div class="risk-banner hidden" id="riskBanner">
+                <span class="risk-dot" id="riskDot">🟢</span>
+                <div class="risk-text">
+                  <strong id="riskTitle">Risk: Normal</strong>
+                  <span id="riskDetail">Signals steady. Continue with Check-In active.</span>
+                </div>
+                <span class="risk-conf" id="riskConf"></span>
+              </div>
               <div class="track-status" id="trackStatus"><span class="track-dot"></span> Waiting for GPS…</div>
               <div class="gps-live" id="gpsStats">
                 <span><b id="gpsSpeed">—</b> km/h</span>
@@ -350,7 +421,15 @@
               </div>
             </div>
             <div class="confidence-meter">
-              <span>Data Confidence</span>
+              <span>Risk level</span>
+              <div class="risk-pills" id="riskPills">
+                <span class="risk-pill" data-l="low">🟢 Normal</span>
+                <span class="risk-pill" data-l="elevated">🟡 Elevated</span>
+                <span class="risk-pill" data-l="high">🟠 High</span>
+              </div>
+            </div>
+            <div class="confidence-meter">
+              <span>Signal confidence</span>
               <div class="meter-bar"><div class="meter-fill" id="confidenceFill"></div></div>
               <span id="confidenceVal">—</span>
             </div>
@@ -435,17 +514,48 @@
       </div>
     </section>
 
+    <!-- EXPANSION PATH -->
+    <section class="expansion" id="expansion">
+      <div class="container">
+        <h2 class="section-label">Not just another safety app</h2>
+        <h3 class="section-title">A platform that <span class="gradient-text">scales with trust.</span></h3>
+        <p class="section-sub">A student-built prototype today — a proactive urban safety-intelligence platform tomorrow. The same risk engine adapts to campuses, transit networks, residential areas and cities.</p>
+        <div class="expansion-grid">
+          <div class="expansion-card">
+            <span class="expansion-phase">Phase 1</span>
+            <h4>Personal safety</h4>
+            <p>AURA for individual travellers — dynamic risk on every journey.</p>
+          </div>
+          <div class="expansion-card">
+            <span class="expansion-phase">Phase 2</span>
+            <h4>Campus safety</h4>
+            <p>Colleges identify recurring risk zones from anonymized journey patterns.</p>
+          </div>
+          <div class="expansion-card">
+            <span class="expansion-phase">Phase 3</span>
+            <h4>Community intelligence</h4>
+            <p>Verified reports + incident patterns, confidence-weighted and anti-false-alarm by design.</p>
+          </div>
+          <div class="expansion-card">
+            <span class="expansion-phase">Phase 4</span>
+            <h4>Urban safety infrastructure</h4>
+            <p>Anonymized risk trends help institutions see where lighting, policing and transit need intervention.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
     <!-- DATA -->
     <section class="data-section" id="data">
       <div class="container">
         <h2 class="section-label">Data</h2>
-        <h3 class="section-title">Built on open, honest, <span class="gradient-text">live data.</span></h3>
-        <p class="section-sub">No accounts, no keys, no tracking. The roadmap for production adds richer signals:</p>
+        <h3 class="section-title">Built on open, honest, <span class="gradient-text">live signals.</span></h3>
+        <p class="section-sub">No accounts, no keys, no tracking. The roadmap for production adds richer risk signals:</p>
         <div class="data-grid">
           <div class="data-card">
             <span class="data-num">01</span>
             <h4>Municipal lighting data</h4>
-            <p>Cities publish street-lamp coverage. That's the baseline for "well-lit."</p>
+            <p>Cities publish street-lamp coverage. That's the baseline for "well-lit" — and it changes your risk at 10 PM.</p>
           </div>
           <div class="data-card">
             <span class="data-num">02</span>
@@ -454,8 +564,8 @@
           </div>
           <div class="data-card">
             <span class="data-num">03</span>
-            <h4>Crowd-sourced reports</h4>
-            <p>Opt-in, aggregated, private-by-design reports from the women who use it.</p>
+            <h4>Verified community reports</h4>
+            <p>Opt-in, aggregated, private-by-design reports — weighted by independence, recency and consistency so one report never cries wolf.</p>
           </div>
         </div>
       </div>
@@ -468,18 +578,18 @@
           <div class="footer-brand">
             <span class="logo-icon">✦</span>
             <span class="logo-text">AURA</span>
-            <p>Awareness · Understanding · Response · Assistance — an AI-powered travel intelligence platform.</p>
+            <p>Adaptive Urban Risk Awareness — a proactive safety-intelligence platform that detects changing risk and intervenes before a situation becomes an emergency.</p>
           </div>
           <div class="footer-links">
+            <a href="#engine">Risk engine</a>
             <a href="#how">How it works</a>
             <a href="#features">Features</a>
             <a href="#app">Try it</a>
-            <a href="#principles">Principles</a>
-            <a href="#data">Data</a>
+            <a href="#expansion">Expansion</a>
           </div>
         </div>
         <div class="footer-bottom">
-          <p>AURA doesn't decide for her — it makes sure she's never deciding with less information than the app has.</p>
+          <p>Risk is dynamic. AURA doesn't decide for her — it watches the risk changing around her and intervenes before it becomes an emergency.</p>
         </div>
       </div>
     </footer>

@@ -222,6 +222,7 @@ function applyWeather(w) {
   } else {
     liveState.rainBanner.classList.add('hidden');
   }
+  updateRisk();
 }
 
 async function enableLocation(fromButton = true) {
@@ -885,6 +886,193 @@ const routes = [
   },
 ];
 
+// ===== AURA RISK ENGINE =====
+// "Risk is dynamic." Signals: time of day, weather, off-route, check-in status,
+// elapsed overrun, and community intelligence. Nothing calls an area safe or
+// unsafe forever — AURA tracks how the risk is changing right now.
+
+// Community intelligence — confidence is weighted by the number of INDEPENDENT
+// reports, their RECENCY, and how CONSISTENT they are. One report never cries wolf.
+const communityReports = [
+  { area: 'Near Film City, Noida', lat: 28.575, lon: 77.318, minutesAgo: 40, severity: 3, count: 5, note: 'Poorly lit stretch after 9 PM near the gate.' },
+  { area: 'Sector 10, Faridabad', lat: 28.408, lon: 77.321, minutesAgo: 120, severity: 2, count: 3, note: 'Dark market lane reported a few times in the evening.' },
+  { area: 'Ancient India Museum, Noida', lat: 28.545, lon: 77.339, minutesAgo: 400, severity: 1, count: 1, note: 'Old lone report near road works — low weight.' },
+];
+
+function communityRiskScore() {
+  let score = 0;
+  communityReports.forEach((r) => {
+    const independence = Math.min(1, r.count / 4);      // more independent reports → stronger
+    const recency = Math.max(0, 1 - r.minutesAgo / 720); // fresh within ~12h
+    const consistency = Math.min(1, r.severity / 3);     // pattern, not panic
+    const weight = independence * 0.6 + recency * 0.25 + consistency * 0.15;
+    score += weight * 14;                                 // up to ~ +14 per confirmed pattern
+  });
+  return Math.min(24, score);
+}
+
+function timeRiskNow() {
+  const h = new Date().getHours();
+  if (h >= 23 || h < 5) return 26;   // deepest night
+  if (h >= 21) return 18;
+  if (h >= 19) return 10;
+  if (h >= 5 && h < 7) return 6;
+  return 0;
+}
+
+function weatherRiskNow() {
+  const w = liveState.weather;
+  if (!w) return 0;
+  if (w.desc === 'Thunderstorm') return 20;
+  if (w.heavy) return 15;
+  if (w.rain) return 8;
+  if (w.desc === 'Foggy') return 10;
+  return 0;
+}
+
+const RISK_LEVELS = {
+  normal:   { label: 'Risk: Normal',   dot: '🟢', cls: 'low',
+              action: 'Continue — signals steady, Check-In active.' },
+  elevated: { label: 'Risk: Elevated', dot: '🟡', cls: 'elevated',
+              action: 'Suggesting a safer option — nearby safe stop added to your route.' },
+  high:     { label: 'Risk: High',     dot: '🟠', cls: 'high',
+              action: 'Prompting a check-in — consider contacting a trusted person.' },
+  critical: { label: 'Risk: Critical', dot: '🔴', cls: 'critical',
+              action: 'Escalation ready — trusted contact can see your live location.' },
+};
+
+const riskEngine = {
+  level: 'normal',
+  prevLevel: 'normal',
+  score: 0,
+  confidence: 82,
+  communityConfidence: 0,
+  lastTick: 0,
+  mutedUntil: 0,
+};
+
+function riskElements() {
+  return {
+    banner: document.getElementById('riskBanner'),
+    dot: document.getElementById('riskDot'),
+    title: document.getElementById('riskTitle'),
+    detail: document.getElementById('riskDetail'),
+    conf: document.getElementById('riskConf'),
+    pills: document.querySelectorAll('.risk-pill'),
+  };
+}
+
+function riskLevelFromScore(s) {
+  if (s >= 80) return 'critical';
+  if (s >= 60) return 'high';
+  if (s >= 35) return 'elevated';
+  return 'normal';
+}
+
+const RISK_PILL_KEY = { normal: 'low', elevated: 'elevated', high: 'high', critical: 'high' };
+
+function computeRiskNow() {
+  let score = timeRiskNow() + weatherRiskNow() + communityRiskScore();
+  if (offRouteActive) score += 22;
+  if (state.checkinWarning) score += 20;
+  if (state.checkinEscalated) score += 45;
+  if (state.checkinNow) score -= 40;
+  return Math.max(0, Math.min(100, score));
+}
+
+function communityConfidenceNow() {
+  let conf = 55;
+  const fresh = communityReports.filter((r) => r.minutesAgo <= 180).length;
+  const consistent = communityReports.filter((r) => r.count >= 2).length;
+  if (fresh >= 2) conf += 18;
+  else if (fresh >= 1) conf += 10;
+  if (consistent >= 2) conf += 12;
+  else if (consistent >= 1) conf += 5;
+  if (communityReports.length === 0) conf = 30;
+  return Math.min(100, conf);
+}
+
+function renderRiskUI() {
+  const els = riskElements();
+  if (!els.banner) return;
+  const meta = RISK_LEVELS[riskEngine.level];
+  els.banner.className = 'risk-banner hidden';
+  els.dot.textContent = meta.dot;
+  els.title.textContent = meta.label;
+  els.detail.textContent = meta.action;
+  els.conf.textContent = `${riskEngine.confidence}% confident`;
+  els.pills.forEach((p) => {
+    p.classList.toggle('active', p.dataset.l === RISK_PILL_KEY[riskEngine.level]);
+  });
+}
+
+function riskNotify(msg) {
+  const now = Date.now();
+  if (now < riskEngine.mutedUntil) return;
+  riskEngine.mutedUntil = now + 20000;
+  notify(msg, 'alert');
+}
+
+function updateRisk() {
+  if (!document.getElementById('riskBanner')) return;
+  if (!state.route || !state.timerStarted) {
+    // Engine still evaluates time/weather, but the live banner only shows live.
+    return;
+  }
+  riskEngine.prevLevel = riskEngine.level;
+  riskEngine.score = computeRiskNow();
+  riskEngine.confidence = communityConfidenceNow();
+  riskEngine.communityConfidence = riskEngine.confidence;
+  const level = riskLevelFromScore(riskEngine.score);
+  riskEngine.level = level;
+  renderRiskUI();
+
+  const els = riskElements();
+  els.banner.classList.remove('hidden');
+  els.banner.classList.add(riskEngine.level === 'normal' ? 'low' : riskEngine.level);
+
+  const confBar = document.getElementById('confidenceFill');
+  const confVal = document.getElementById('confidenceVal');
+  if (confBar && confVal && confVal.classList.contains('risk-live')) {
+    confBar.style.width = `${riskEngine.confidence}%`;
+    confVal.textContent = `${riskEngine.confidence}% weighted`;
+  }
+
+  if (riskEngine.level !== riskEngine.prevLevel) {
+    if (riskEngine.level === 'critical') {
+      riskNotify('Risk Critical — escalation path for your trusted contact is ready.');
+    } else if (riskEngine.level === 'high') {
+      riskNotify(`Risk climbing — ${RISK_LEVELS.high.action}`);
+    } else if (riskEngine.level === 'elevated') {
+      riskNotify(`Risk moved to Elevated — ${RISK_LEVELS.elevated.action}`);
+    } else {
+      riskNotify('Risk back to Normal — signals steady again.');
+    }
+  }
+}
+
+// Timer-driven risk recomputation during a journey (~ every 15s).
+setInterval(() => {
+  const now = Date.now();
+  if (now - riskEngine.lastTick < 15000) return;
+  riskEngine.lastTick = now;
+  if (state.timerStarted) updateRisk();
+}, 1000);
+
+function resetRiskEngine() {
+  riskEngine.prevLevel = 'normal';
+  riskEngine.level = 'normal';
+  riskEngine.score = 0;
+  riskEngine.confidence = (state.route ? state.route.confidence : 82);
+  riskEngine.lastTick = 0;
+  const els = riskElements();
+  if (els.banner) {
+    els.banner.classList.add('hidden');
+    els.banner.classList.remove('low', 'elevated', 'high', 'critical');
+  }
+  els.pills.forEach((p) => p.classList.remove('active'));
+}
+
 // ===== GEOCODING =====
 const geoData = { pickup: null, destination: null };
 const geoLabel = {};
@@ -1428,12 +1616,15 @@ startBtn.addEventListener('click', () => {
   state.checkinEscalated = false;
   state.notified = false;
 
-  liveRouteName.textContent = state.route.name;
+liveRouteName.textContent = state.route.name;
   timerValue.textContent = formatTime(state.timer);
   const distKm = state.distanceKm !== null ? state.distanceKm : (2 + Math.random() * 2).toFixed(1);
   distEta.innerHTML = `${distKm} km left · ETA <strong>${state.route.time + state.buffer} min</strong>`;
   confidenceFill.style.width = `${state.route.confidence}%`;
   confidenceVal.textContent = `${state.route.confidence}% High`;
+  confidenceVal.classList.add('risk-live');
+
+  resetRiskEngine();
 
   setCheckinStatus('armed');
   state.movingStarted = false;
@@ -1462,6 +1653,7 @@ function startJourneyTimer(forced) {
   state.waitForMove = false;
   state.movedAt = Date.now();
   startTimer();
+  updateRisk();
   if (forced) return;
   notify('Movement detected — taking your live route. Check-In timer running.');
 }
@@ -1621,12 +1813,13 @@ function setCheckinStatus(kind) {
     checkinHeadline.textContent = `Message sent to ${contact}`;
     checkinDetail.textContent = 'AURA keeps watching until you respond.';
     checkinDot.className = 'checkin-dot escalated';
-  } else if (kind === 'confirmed') {
+} else if (kind === 'confirmed') {
     checkinHeadline.textContent = 'Check-In confirmed';
     checkinDetail.textContent = 'Safe arrival verified. Trusted contact was not notified.';
     checkinDot.className = 'checkin-dot armed';
     escalationCard.classList.add('hidden');
   }
+  updateRisk();
 }
 
 // ===== CHECK-IN / ARRIVAL =====
@@ -1833,12 +2026,14 @@ function checkOffRoute() {
     } else if (!state.reroutingActive) {
       offRouteDetail.innerHTML = `You're about ${fmtM(offM)} away from the route line. A safer re-route was already applied — Check-In stays active.`;
     }
+    updateRisk();
   } else {
     state.offRouteStrikes = 0;
     const speedTxt = Number(state.gpsSpeed) > 0 ? ` · ${state.gpsSpeed} km/h` : '';
     setTrackStatus(state.waitForMove ? `On route · ${fmtM(offM)} from the line · timer starts on movement` : `You're on the route · ${fmtM(offM)} from the line${speedTxt}`);
     offRouteBanner.classList.add('hidden');
     offRouteActive = false;
+    updateRisk();
   }
 }
 

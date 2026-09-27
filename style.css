@@ -21,6 +21,10 @@
   --accent-glow: rgba(233, 30, 99, 0.28);
   --green: #10b981;
   --red: #ef4444;
+  --risk-low: #10b981;
+  --risk-elevated: #eab308;
+  --risk-high: #f97316;
+  --risk-critical: #ef4444;
   --gradient: linear-gradient(135deg, #e91e63 0%, #ff8fb0 100%);
   --sidebar-w: 250px;
   --radius: 16px;
@@ -2131,4 +2135,289 @@ input::placeholder {
 .suggestion-item.active small,
 .suggestion-item.active strong {
   color: #fff;
+}
+
+/* ===== CONCEPT: RISK IS DYNAMIC ===== */
+.concept {
+  padding: 88px 0;
+  background: var(--bg-soft);
+}
+
+.concept-grid {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  gap: 24px;
+  align-items: stretch;
+  margin-top: 36px;
+}
+
+.concept-arrow {
+  align-self: center;
+  font-size: 2rem;
+  color: var(--accent);
+  font-weight: 800;
+}
+
+.concept-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 30px;
+  text-align: center;
+}
+
+.concept-card.static {
+  border-color: #d1fae5;
+  background: linear-gradient(180deg, #ecfdf5 0%, #fff 100%);
+}
+
+.concept-card.dynamic {
+  border-color: #fde68a;
+  background: linear-gradient(180deg, #fffbeb 0%, #fff 100%);
+}
+
+.concept-emoji {
+  font-size: 2.6rem;
+  display: inline-block;
+  margin-bottom: 14px;
+}
+
+.concept-card h4 {
+  font-size: 1.05rem;
+  margin-bottom: 10px;
+}
+
+.concept-q {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 10px;
+}
+
+.concept-q em {
+  font-style: normal;
+  color: var(--accent);
+}
+
+.concept-note {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+/* ===== RISK ENGINE DIAGRAM ===== */
+.engine {
+  padding: 88px 0;
+  background: var(--bg);
+}
+
+.engine-diagram {
+  display: grid;
+  grid-template-columns: 1fr 1.2fr 1fr;
+  gap: 22px;
+  align-items: start;
+  margin-top: 40px;
+}
+
+.engine-col,
+.engine-mid {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 24px;
+}
+
+.engine-col-label,
+.engine-mid-label {
+  display: block;
+  font-size: 0.72rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  font-weight: 700;
+  margin-bottom: 16px;
+}
+
+.engine-chip {
+  padding: 10px 14px;
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-sm);
+  font-size: 0.86rem;
+  font-weight: 600;
+  color: var(--text-dim);
+  margin-bottom: 10px;
+  background: #fff;
+}
+
+.engine-chip.g { border-color: #a7f3d0; color: #047857; background: #ecfdf5; }
+.engine-chip.y { border-color: #fde68a; color: #854d0e; background: #fffbeb; }
+.engine-chip.o { border-color: #fed7aa; color: #9a3412; background: #fff7ed; }
+.engine-chip.r { border-color: #fecaca; color: #b91c1c; background: #fef2f2; }
+
+.engine-core {
+  background: var(--gradient);
+  color: #fff;
+  border-radius: var(--radius);
+  padding: 22px 18px;
+  text-align: center;
+  font-size: 1rem;
+  line-height: 1.5;
+}
+
+.engine-core strong {
+  font-size: 1.15rem;
+}
+
+.engine-sub {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  margin-top: 12px;
+  text-align: center;
+}
+
+/* ===== EXPANSION PATH ===== */
+.expansion {
+  padding: 88px 0;
+  background: var(--bg-soft);
+}
+
+.expansion-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 18px;
+  margin-top: 36px;
+}
+
+.expansion-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 24px;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.expansion-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 14px 30px rgba(233, 30, 99, 0.12);
+}
+
+.expansion-phase {
+  display: inline-block;
+  font-size: 0.72rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--accent);
+  font-weight: 800;
+  margin-bottom: 12px;
+}
+
+.expansion-card h4 {
+  font-size: 1.05rem;
+  margin-bottom: 8px;
+}
+
+.expansion-card p {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+/* ===== LIVE RISK BANNER (in journey map) ===== */
+.risk-banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 8px;
+  padding: 12px 16px;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-left-width: 4px;
+  border-radius: var(--radius-sm);
+  max-width: 640px;
+  font-size: 0.86rem;
+}
+
+.risk-banner.low { border-left-color: var(--risk-low); background: #ecfdf5; }
+.risk-banner.elevated { border-left-color: var(--risk-elevated); background: #fffbeb; }
+.risk-banner.high { border-left-color: var(--risk-high); background: #fff7ed; }
+.risk-banner.critical { border-left-color: var(--risk-critical); background: #fef2f2; }
+
+.risk-dot {
+  font-size: 1.4rem;
+  line-height: 1;
+}
+
+.risk-text {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.risk-text strong {
+  color: var(--text);
+}
+
+.risk-text span {
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  margin-top: 2px;
+}
+
+.risk-conf {
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+/* ===== RISK PILLS (journey panel) ===== */
+.risk-pills {
+  flex: 1;
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.risk-pill {
+  font-size: 0.78rem;
+  font-weight: 700;
+  padding: 6px 12px;
+  border-radius: 100px;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  opacity: 0.55;
+  transition: all 0.35s ease;
+}
+
+.risk-pill.active {
+  opacity: 1;
+}
+
+.risk-pill[data-l="low"].active { background: #ecfdf5; border-color: var(--risk-low); color: #047857; }
+.risk-pill[data-l="elevated"].active { background: #fffbeb; border-color: var(--risk-elevated); color: #854d0e; }
+.risk-pill[data-l="high"].active { background: #fff7ed; border-color: var(--risk-high); color: #9a3412; }
+
+/* ===== RESPONSIVE ===== */
+@media (max-width: 900px) {
+  .engine-diagram {
+    grid-template-columns: 1fr;
+  }
+
+  .concept-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .concept-arrow {
+    transform: rotate(90deg);
+    text-align: center;
+  }
+
+  .expansion-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (max-width: 480px) {
+  .expansion-grid {
+    grid-template-columns: 1fr;
+  }
 }
